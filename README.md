@@ -26,6 +26,9 @@ The start line is set once, while riding, with a single button press — then it
 is remembered for every future session. Real-world precision: ~0.1-0.3 s
 (5 Hz GPS + crossing interpolation).
 
+➡ **[FEATURES.md](FEATURES.md)** — the full feature tour, and the
+purchase-to-feature roadmap (what to buy to unlock what).
+
 ---
 
 ## 1. Parts list and what each part does
@@ -424,13 +427,10 @@ The interesting parts:
 
 ## 7. Possible upgrades
 
-Everything code-only is built in. Still on the table (need hardware):
-
-- u-blox **M8N/M10** GPS (10-25 Hz, multi-constellation): drop-in replacement,
-  same wiring, same code → noticeably better precision (~200-400 ฿).
-- **MPU6050 IMU** (~50 ฿): lean angle and G-force logging.
-- **2.42" SSD1309 OLED**: same library, a one-line change.
-- Battery gauge (2×100 kΩ voltage divider into an ADC pin).
+Everything code-only is built in. What remains needs hardware — see the
+**[purchase-to-feature roadmap in FEATURES.md](FEATURES.md#future-features-and-the-shopping-list)**
+(u-blox M8N/M10 for 10-25 Hz precision, MPU6050 for lean angle, bigger OLED,
+battery gauge...).
 
 ---
 
