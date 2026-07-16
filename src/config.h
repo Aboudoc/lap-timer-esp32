@@ -1,5 +1,5 @@
 #pragma once
-#include <Arduino.h>
+#include <stdint.h>  // no Arduino dependency: also included by host-side unit tests
 
 // ============================ Pins ============================
 constexpr int PIN_GPS_RX   = 16;  // ESP32 RX2  <- GPS TX pin
@@ -39,6 +39,21 @@ constexpr float    MIN_SETLINE_SPEED_KMH = 10.0f;   // minimum speed to set the 
 constexpr float    MAX_FIX_JUMP_M        = 250.0f;  // absurd position jump -> ignored
 constexpr int      MAX_LAPS              = 120;     // laps stored per session
 constexpr int      TRACE_MAX_SAMPLES     = 1500;    // predictive-delta reference buffer (5 min @ 5 Hz)
+constexpr int      NUM_SECTORS           = 3;       // automatic sectors (split by distance)
+constexpr uint32_t SESSION_GAP_MS        = 300000;  // crossing after 5 min of no lap = new session
+
+// ===================== Tracks =====================
+constexpr int   MAX_TRACKS     = 20;     // named tracks stored in flash
+constexpr float TRACK_MATCH_KM = 5.0f;   // auto-select the stored track within this range at startup
+
+// ================= Pit mode (WiFi) =================
+// Long press on the GPS page: reboots into a WiFi hotspot with a web page to
+// download the lap log, manage tracks and flash firmware updates (OTA).
+constexpr char PIT_WIFI_PASS[] = "laptimer";  // WPA2 password of the hotspot (8+ chars)
+
+// ================= Screen dimming =================
+constexpr uint32_t DIM_AFTER_MS  = 60000;  // dim after 1 min without movement or button
+constexpr float    DIM_SPEED_KMH = 5.0f;   // "movement" threshold
 
 // ========================= Interface =========================
 constexpr uint32_t LAP_FLASH_MS      = 4000;  // how long the lap time stays on screen after a lap

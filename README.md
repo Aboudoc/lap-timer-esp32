@@ -5,12 +5,19 @@ Ninja 400 at MSP Bangkok). Tank-mounted via Quad Lock, it automatically detects
 every pass over the start/finish line and shows:
 
 - the **current lap time** in big digits,
-- a **live predictive delta** vs your best lap, updated as you ride
-  (`-0.42` = you are currently faster than your best lap),
-- on every completed lap: the **lap time** full-screen for 4 s with the
-  **delta vs your best lap** (`-0.32 vs best`),
-- last lap, best lap, speed, lap count,
-- it **logs every lap to a CSV file** in its internal flash (retrievable over USB),
+- a **live predictive delta** vs your all-time best lap, updated as you ride
+  (`-0.42` = you are currently faster than your best), available from lap 1
+  thanks to the persisted reference lap,
+- on every completed lap: the **lap time** full-screen for 4 s with the delta
+  vs best and the **3 sector deltas** (`-0.2 +0.5 -0.1` — where you gained,
+  where you lost),
+- **named tracks**: line, all-time best, best sectors and reference lap are
+  stored per track and the nearest track is auto-selected at startup,
+- **automatic sessions**: a stop longer than 5 minutes starts a new session,
+  with per-session stats (average, theoretical best),
+- it **logs every lap to a CSV file** in its internal flash,
+- a **pit mode** turns it into a WiFi hotspot with a web app: download the lap
+  log, manage tracks and **update the firmware over the air** — no cable,
 - and it can **stream the GPS to your phone over Bluetooth**: to the RaceChrono
   app (BLE, iOS + Android) or as a generic Bluetooth NMEA GPS for TrackAddict,
   Harry's LapTimer and mock-location apps (Android).
@@ -81,11 +88,27 @@ Built-in guards: 30 s minimum lap time, 15 km/h minimum speed, wrong-direction
 crossings ignored → no false laps in the pits or while stopped on the grid.
 
 **Predictive delta:** while you ride, the firmware records a distance → time
-trace of the lap. Whenever a lap becomes your session best, its trace becomes
-the reference. From then on, your progress is compared against the reference
-*at the same distance along the lap*, five times per second — the bottom-left
-of the RACE page shows `-0.42` (you're up) or `+0.87` (you're down), inverted
-video when you're gaining. Available from lap 2 onwards.
+trace of the lap. Whenever a lap becomes your all-time best on this track, its
+trace becomes the reference — and it is saved to flash. From then on, your
+progress is compared against the reference *at the same distance along the
+lap*, five times per second — the bottom-left of the RACE page shows `-0.42`
+(you're up) or `+0.87` (you're down), inverted video when you're gaining.
+Since the reference survives power-off, the delta is live from lap 1 on your
+next track day.
+
+**Sectors:** the reference lap is split into 3 equal-distance sectors. Every
+completed lap shows the delta of each sector vs your best sectors, and the
+SESSION page shows the **theoretical best** (sum of your best sectors) — the
+lap you could do if you nailed every sector.
+
+**Tracks:** each start line lives in a named track file (line, all-time best,
+best sectors, reference lap). At startup, the nearest stored track within 5 km
+is loaded automatically. Manage tracks from the pit-mode web app or the `T`
+serial command.
+
+**Sessions:** if no lap is completed for more than 5 minutes (red flag, pit
+stop, lunch), the next crossing starts a fresh session automatically — lap
+list and session stats reset, track records stay.
 
 ---
 
@@ -218,12 +241,27 @@ with the battery connected is fine, no conflict.
 | Page | Content | Long press |
 |---|---|---|
 | **RACE** | current lap (big), speed, sats, live delta + Best (or Last/Best) | — |
-| **SESSION** | recent laps (best marked `*`), session vmax | reset session |
-| **GPS** | fix, satellites, HDOP, rate Hz, position | — |
-| **LINE** | line status and distance | set the line here |
+| **SESSION** | session #, laps (best `*`), vmax, theoretical best, average | reset session |
+| **GPS** | fix, satellites, HDOP, rate Hz, position | **toggle pit mode (WiFi)** |
+| **LINE** | active track, line status and distance | set the line here |
 
-On the RACE top bar, `B` in front of the satellite count means a RaceChrono
-client is connected.
+On the RACE top bar, `B` in front of the satellite count means a phone app is
+connected over Bluetooth, `W` means the pit-mode hotspot is up. The screen
+dims by itself after 1 minute without movement (any button or riding wakes it).
+
+### Pit mode: WiFi web app + firmware updates
+
+Long-press on the GPS page (or serial command `w`): the device reboots into a
+WiFi hotspot — network **"LapTimer ESP32"**, password **`laptimer`**, then
+open **http://192.168.4.1** in the phone browser:
+
+- download or erase the lap log (CSV),
+- list / select / rename / delete tracks,
+- **flash a new firmware over the air**: menu *Firmware update*, upload
+  `.pio/build/esp32dev/firmware.bin` — no USB cable, no computer at the track.
+
+Bluetooth is off while pit mode is active. Long-press the GPS page again to
+reboot back into normal mode.
 
 While the timer is running, the display auto-returns to RACE after 15 s. Long
 presses are disabled on RACE and GPS to prevent accidental actions while
@@ -234,12 +272,15 @@ riding.
 | Command | Effect |
 |---|---|
 | `h` | help |
-| `i` | info: line, session, all-time best, GPS state |
+| `i` | info: track, line, session, records, GPS state |
+| `T` / `T <id>` | list stored tracks / select one |
+| `N <name>` | rename the active track |
 | `d` | dump the CSV log of every lap |
 | `x` | erase the CSV log |
 | `r` | reset the session |
-| `z` | erase the all-time best |
-| `L <lat> <lon> <hdg> [half-width]` | set the line manually (e.g. from Google Maps) |
+| `z` | erase the active track records (best, sectors, reference) |
+| `w` | toggle pit mode (WiFi hotspot, reboots) |
+| `L <lat> <lon> <hdg> [half-width]` | create a track manually (e.g. from Google Maps) |
 
 ### Main settings (`src/config.h`)
 
@@ -249,8 +290,13 @@ riding.
 | `MIN_LAP_MS` | 30 s | minimum lap time (double-detection guard) |
 | `MIN_CROSS_SPEED_KMH` | 15 km/h | minimum speed for a valid crossing |
 | `GPS_MEAS_RATE_MS` | 200 ms | GPS rate (5 Hz = NEO-6M maximum) |
+| `NUM_SECTORS` | 3 | automatic sectors per lap |
+| `SESSION_GAP_MS` | 5 min | stop longer than this = new session |
+| `TRACK_MATCH_KM` | 5 km | auto-select range for stored tracks |
 | `BT_MODE` | RACECHRONO | Bluetooth mode: `RACECHRONO` (BLE), `NMEA` (Bluetooth Classic), `OFF` |
-| `BT_DEVICE_NAME` | LapTimer ESP32 | name the phone sees |
+| `BT_DEVICE_NAME` | LapTimer ESP32 | name the phone sees (Bluetooth + WiFi) |
+| `PIT_WIFI_PASS` | laptimer | pit-mode hotspot password |
+| `DIM_AFTER_MS` | 1 min | screen dimming delay when parked |
 | `PIN_*` | — | full pinout |
 
 Display mounted upside down? Change `U8G2_R0` to `U8G2_R2` in `src/display.h`.
@@ -305,23 +351,30 @@ current than BLE (Bluetooth Classic radio, CPU at 160 MHz vs 80 MHz).
 
 ```
 src/
-├── main.cpp      Orchestrator: main loop, buttons, serial commands,
-│                 simulation mode
+├── main.cpp      Orchestrator: main loop, buttons, serial commands, track
+│                 auto-selection, simulation/replay modes
 ├── config.h      Every setting and the pinout
+├── fix.h         GpsFix struct (plain data, shared with the unit tests)
 ├── gps.cpp/.h    Drives the NEO-6M: automatic baud detection, UBX
 │                 configuration (5 Hz, useless sentences disabled), clean
 │                 "fix" snapshots via TinyGPS++
-├── laptimer.cpp/.h  The algorithm: gate-crossing geometry, exact-time
-│                 interpolation, laps/best/deltas, and the distance-matched
-│                 predictive delta (lap traces + reference lap)
+├── laptimer.cpp/.h  The timing core (no Arduino dependency): gate-crossing
+│                 geometry, exact-time interpolation, sessions, sectors,
+│                 predictive delta (lap traces + persisted reference lap)
 ├── ble_racechrono.cpp/.h  "RaceChrono DIY" BLE device (NimBLE): streams the
 │                 5 Hz GPS to the RaceChrono app
 ├── bt_nmea.cpp/.h   Generic Bluetooth Classic NMEA GPS (SPP): GGA/RMC
 │                 sentences for TrackAddict & co on Android
+├── pit.cpp/.h    Pit mode: WiFi hotspot, embedded web app (lap log, track
+│                 management) and OTA firmware updates
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
-├── storage.cpp/.h   Persistence: line + best in NVS, CSV log in LittleFS
-│                 (internal flash)
+├── storage.cpp/.h   Persistence in LittleFS: one file per track (line,
+│                 records, reference trace) + the CSV lap log
 └── button.cpp/.h    Debouncing, short vs long press detection
+
+test/test_laptimer/  Host-side unit tests of the timing core (9 cases:
+                  crossings, interpolation, midnight, sessions, sectors,
+                  predictive delta) — run with: pio test -e native
 ```
 
 The interesting parts:
@@ -336,9 +389,15 @@ The interesting parts:
   inside the gate, in the right direction. The exact time is linearly
   interpolated between the GPS times of both fixes — hence roughly
   tenth-of-a-second precision despite the 5 Hz rate.
-- **Two build environments**: `esp32dev` (real) and `esp32dev-sim` (built-in
-  virtual track — same timing code, generated positions — to test without a
-  GPS).
+- **Four build environments**: `esp32dev` (real), `esp32dev-sim` (built-in
+  virtual track to test without a GPS), `esp32dev-nmea` (Bluetooth Classic
+  GPS), and `esp32dev-replay` — in replay mode, any NMEA lines pasted or
+  streamed to the USB serial port are treated as GPS input, so you can re-run
+  a recorded session against the timing code
+  (e.g. `pv -q -L 900 session.nmea > /dev/cu.usbserial-XXXX`).
+- **Host-side unit tests**: the timing core has no Arduino dependency and is
+  covered by 9 unit tests that run on your computer in two seconds:
+  `pio test -e native`.
 
 ---
 
@@ -353,24 +412,25 @@ The interesting parts:
 | GPS page shows ~1.0Hz | The 5 Hz configuration didn't get through: check the RX wire (GPIO17 → GPS RX), reboot outdoors |
 | Random reboots on battery | MT3608 badly adjusted or battery empty — measure the voltage on VIN |
 | Laps not detected | Line set at the wrong spot/heading (set it again), or laps < 30 s (`MIN_LAP_MS`) |
-| Not visible in RaceChrono | NMEA or OFF build flashed instead of the default, or another phone is already connected (one client at a time) |
+| Not visible in RaceChrono | NMEA or OFF build flashed instead of the default, pit mode active (Bluetooth off), or another phone is already connected |
 | Not visible in TrackAddict | RaceChrono build flashed instead of `esp32dev-nmea`, or not paired in the Android Bluetooth settings first |
 | No data in the app despite connection | The device only streams once it has a GPS fix — wait for `FIX` on the GPS page |
-| No delta on the RACE page | Normal on lap 1 — the delta needs a completed reference lap (from lap 2) |
+| No delta on the RACE page | Normal on the first-ever lap of a track — the delta needs a reference lap. On later track days it is live from lap 1 |
+| Wrong track auto-selected | Two stored lines within 5 km of each other: select manually (`T <id>` or the pit-mode web app) |
+| Stuck in WiFi mode after an OTA update | Expected — long-press the GPS page (or `w`) to reboot back into normal mode |
+| Screen suddenly dark | Parking dim (1 min without movement) — press a button or start riding |
 
 ---
 
 ## 7. Possible upgrades
 
-Already built in: live predictive delta, RaceChrono BLE streaming. Still on
-the table (need hardware):
+Everything code-only is built in. Still on the table (need hardware):
 
 - u-blox **M8N/M10** GPS (10-25 Hz, multi-constellation): drop-in replacement,
   same wiring, same code → noticeably better precision (~200-400 ฿).
+- **MPU6050 IMU** (~50 ฿): lean angle and G-force logging.
 - **2.42" SSD1309 OLED**: same library, a one-line change.
 - Battery gauge (2×100 kΩ voltage divider into an ADC pin).
-- Persist the reference lap across power cycles (predictive delta available
-  from lap 1 of the next session).
 
 ---
 

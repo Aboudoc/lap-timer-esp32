@@ -117,44 +117,48 @@ void GpsModule::configureModule() {
 
 bool GpsModule::update() {
   bool newFix = false;
-  while (serial_->available()) {
-    if (!gps_.encode((char)serial_->read())) continue;
-    // A complete sentence was just parsed. Emit a fix when position AND
-    // speed are fresh (= RMC sentence), once per epoch.
-    if (!gps_.location.isUpdated() || !gps_.speed.isUpdated() || !gps_.time.isValid()) continue;
-
-    uint32_t mod = ((uint32_t)gps_.time.hour() * 3600UL + gps_.time.minute() * 60UL +
-                    gps_.time.second()) * 1000UL + gps_.time.centisecond() * 10UL;
-    if (mod == lastEmitMsOfDay_) {
-      // Same epoch (redundant sentence): just consume the values to clear
-      // the "updated" flags.
-      gps_.location.lat(); gps_.location.lng(); gps_.speed.kmph(); gps_.course.deg();
-      continue;
-    }
-    lastEmitMsOfDay_ = mod;
-
-    uint32_t now = millis();
-    fix_.lat       = gps_.location.lat();
-    fix_.lon       = gps_.location.lng();
-    fix_.speedKmh  = gps_.speed.isValid() ? (float)gps_.speed.kmph() : 0.0f;
-    fix_.courseDeg = gps_.course.isValid() ? (float)gps_.course.deg() : 0.0f;
-    fix_.altValid  = gps_.altitude.isValid();
-    fix_.altM      = fix_.altValid ? (float)gps_.altitude.meters() : 0.0f;
-    fix_.msOfDay   = mod;
-    fix_.localMs   = now;
-    fix_.valid     = gps_.location.isValid();
-
-    if (lastFixLocalMs_ != 0) {
-      float dt = (now - lastFixLocalMs_) / 1000.0f;
-      if (dt > 0.01f && dt < 3.0f) {
-        float inst = 1.0f / dt;
-        rateHz_ = (rateHz_ == 0) ? inst : rateHz_ * 0.9f + inst * 0.1f;
-      }
-    }
-    lastFixLocalMs_ = now;
-    newFix = fix_.valid;
+  while (serial_ && serial_->available()) {
+    if (processChar((char)serial_->read())) newFix = true;
   }
   return newFix;
+}
+
+bool GpsModule::processChar(char c) {
+  if (!gps_.encode(c)) return false;
+  // A complete sentence was just parsed. Emit a fix when position AND
+  // speed are fresh (= RMC sentence), once per epoch.
+  if (!gps_.location.isUpdated() || !gps_.speed.isUpdated() || !gps_.time.isValid()) return false;
+
+  uint32_t mod = ((uint32_t)gps_.time.hour() * 3600UL + gps_.time.minute() * 60UL +
+                  gps_.time.second()) * 1000UL + gps_.time.centisecond() * 10UL;
+  if (mod == lastEmitMsOfDay_) {
+    // Same epoch (redundant sentence): just consume the values to clear
+    // the "updated" flags.
+    gps_.location.lat(); gps_.location.lng(); gps_.speed.kmph(); gps_.course.deg();
+    return false;
+  }
+  lastEmitMsOfDay_ = mod;
+
+  uint32_t now = millis();
+  fix_.lat       = gps_.location.lat();
+  fix_.lon       = gps_.location.lng();
+  fix_.speedKmh  = gps_.speed.isValid() ? (float)gps_.speed.kmph() : 0.0f;
+  fix_.courseDeg = gps_.course.isValid() ? (float)gps_.course.deg() : 0.0f;
+  fix_.altValid  = gps_.altitude.isValid();
+  fix_.altM      = fix_.altValid ? (float)gps_.altitude.meters() : 0.0f;
+  fix_.msOfDay   = mod;
+  fix_.localMs   = now;
+  fix_.valid     = gps_.location.isValid();
+
+  if (lastFixLocalMs_ != 0) {
+    float dt = (now - lastFixLocalMs_) / 1000.0f;
+    if (dt > 0.01f && dt < 3.0f) {
+      float inst = 1.0f / dt;
+      rateHz_ = (rateHz_ == 0) ? inst : rateHz_ * 0.9f + inst * 0.1f;
+    }
+  }
+  lastFixLocalMs_ = now;
+  return fix_.valid;
 }
 
 bool GpsModule::hasFix() {

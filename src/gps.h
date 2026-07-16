@@ -2,25 +2,15 @@
 #include <Arduino.h>
 #include <TinyGPS++.h>
 #include "config.h"
-
-// Snapshot of a GPS position, emitted once per measurement epoch.
-struct GpsFix {
-  double   lat = 0, lon = 0;
-  float    speedKmh  = 0;
-  float    courseDeg = 0;      // course over ground (0 = north, 90 = east)
-  float    altM      = 0;      // altitude above sea level, meters
-  bool     altValid  = false;
-  uint32_t msOfDay   = 0;      // GPS time (UTC) in ms since midnight
-  uint32_t localMs   = 0;      // millis() when received
-  bool     valid     = false;
-};
+#include "fix.h"
 
 // Drives the NEO-6M: baud rate detection, UBX configuration (5 Hz, RMC+GGA
 // only, fast baud), then produces clean GpsFix snapshots.
 class GpsModule {
  public:
   void begin(HardwareSerial& serial);
-  bool update();  // call in the main loop; true when a new valid fix is available
+  bool update();               // call in the main loop; true when a new valid fix is available
+  bool processChar(char c);    // feed one NMEA char directly (replay mode)
   const GpsFix& fix() const { return fix_; }
 
   bool     hasFix();

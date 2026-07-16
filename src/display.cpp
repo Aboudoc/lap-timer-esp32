@@ -8,10 +8,23 @@ static void fmtDelta(char* buf, size_t n, int32_t d) {
            (unsigned long)(a / 1000UL), (unsigned long)((a / 10UL) % 100UL));
 }
 
+// "+1.2" / "-0.4" (seconds.tenths, clamped to 9.9) — for the sector row.
+static void fmtDeltaShort(char* buf, size_t n, int32_t d) {
+  long a = labs((long)d);
+  if (a > 9900) a = 9900;
+  snprintf(buf, n, "%c%ld.%ld", d < 0 ? '-' : '+', a / 1000, (a / 100) % 10);
+}
+
 void Display::begin() {
   u8g2_.begin();
   u8g2_.setBusClock(400000);
   u8g2_.setContrast(255);  // full contrast for direct sunlight
+}
+
+void Display::setDim(bool dim) {
+  if (dim == dimmed_) return;
+  dimmed_ = dim;
+  u8g2_.setContrast(dim ? 30 : 255);
 }
 
 void Display::drawCentered(const char* s, int y) {
@@ -36,20 +49,20 @@ void Display::notify(const char* msg, uint32_t durationMs) {
 }
 
 void Display::render(Page page, const LapTimer& t, const GpsView& g,
-                     uint32_t now, uint32_t bestEverMs) {
+                     uint32_t now, const char* trackName) {
   u8g2_.clearBuffer();
   bool flashActive = t.lapCount() > 0 && t.timing() &&
                      now - t.lastCrossLocalMs() < LAP_FLASH_MS;
   if (notifUntil_ && now < notifUntil_) {
     drawNotify();
   } else if (page == Page::Race && flashActive) {
-    drawLapFlash(t, bestEverMs);
+    drawLapFlash(t);
   } else {
     switch (page) {
       case Page::Race:    drawRace(t, g, now); break;
       case Page::Session: drawSession(t); break;
       case Page::Gps:     drawGps(g); break;
-      case Page::Line:    drawLinePage(t, g); break;
+      case Page::Line:    drawLinePage(t, g, trackName); break;
       default: break;
     }
   }
@@ -65,16 +78,20 @@ void Display::drawNotify() {
 }
 
 // Lap completed: inverted, highly visible screen for LAP_FLASH_MS.
-void Display::drawLapFlash(const LapTimer& t, uint32_t bestEverMs) {
-  char b[32];
+void Display::drawLapFlash(const LapTimer& t) {
+  char b[40];
   u8g2_.drawBox(0, 0, 128, 64);
   u8g2_.setDrawColor(0);
 
   u8g2_.setFont(u8g2_font_6x12_tf);
   snprintf(b, sizeof(b), "LAP %d", t.lapCount());
   u8g2_.drawStr(2, 11, b);
-  if (bestEverMs && t.lastLapMs() == bestEverMs) {
+  if (t.lastLapWasRecord()) {
     u8g2_.drawStr(128 - u8g2_.getStrWidth("RECORD!") - 2, 11, "RECORD!");
+  } else if (t.lastDeltaBestMs() != 0) {
+    char d[12];
+    fmtDelta(d, sizeof(d), t.lastDeltaBestMs());
+    u8g2_.drawStr(128 - u8g2_.getStrWidth(d) - 2, 11, d);
   }
 
   u8g2_.setFont(u8g2_font_logisoso28_tn);
@@ -82,12 +99,14 @@ void Display::drawLapFlash(const LapTimer& t, uint32_t bestEverMs) {
   drawCentered(b, 47);
 
   u8g2_.setFont(u8g2_font_6x12_tf);
-  if (t.lapCount() >= 2) {
-    char d[16];
-    fmtDelta(d, sizeof(d), t.lastDeltaBestMs());
-    snprintf(b, sizeof(b), "%s vs best", d);
+  if (t.hasSectors()) {
+    char s1[8], s2[8], s3[8];
+    fmtDeltaShort(s1, sizeof(s1), t.lastSectorDeltaMs(0));
+    fmtDeltaShort(s2, sizeof(s2), t.lastSectorDeltaMs(1));
+    fmtDeltaShort(s3, sizeof(s3), t.lastSectorDeltaMs(2));
+    snprintf(b, sizeof(b), "%s %s %s", s1, s2, s3);
     drawCentered(b, 63);
-  } else {
+  } else if (t.lapCount() < 2) {
     drawCentered("first lap", 63);
   }
   u8g2_.setDrawColor(1);
@@ -96,14 +115,14 @@ void Display::drawLapFlash(const LapTimer& t, uint32_t bestEverMs) {
 void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
   char b[32];
 
-  // Top bar: laps, speed, GPS state.
+  // Top bar: laps, speed, link + GPS state.
   u8g2_.setFont(u8g2_font_6x12_tf);
   snprintf(b, sizeof(b), "L%d", t.lapCount());
   u8g2_.drawStr(0, 10, b);
   snprintf(b, sizeof(b), "%3.0f km/h", g.speedKmh);
   drawCentered(b, 10);
   if (g.hasFix) {
-    snprintf(b, sizeof(b), "%sS%d", g.ble ? "B " : "", g.sats);
+    snprintf(b, sizeof(b), "%sS%d", g.wifi ? "W " : (g.ble ? "B " : ""), g.sats);
     u8g2_.drawStr(128 - u8g2_.getStrWidth(b), 10, b);
   } else if ((now / 400) % 2) {
     u8g2_.drawStr(128 - u8g2_.getStrWidth("GPS!"), 10, "GPS!");
@@ -124,7 +143,7 @@ void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
   if (t.hasPredDelta()) {
     char d[12], m[12];
     fmtDelta(d, sizeof(d), t.predDeltaMs());
-    fmtLapTime(m, sizeof(m), t.bestLapMs(), true);
+    fmtLapTime(m, sizeof(m), t.allTimeBestMs(), true);
     if (t.predDeltaMs() < 0) {
       // Gaining on the best lap: inverted patch, readable at a glance.
       u8g2_.drawBox(0, 52, u8g2_.getStrWidth(d) + 5, 12);
@@ -152,19 +171,28 @@ void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
 }
 
 void Display::drawSession(const LapTimer& t) {
-  char b[32], tm[12];
+  char b[36], tm[12];
   u8g2_.setFont(u8g2_font_6x12_tf);
-  snprintf(b, sizeof(b), "Laps:%d  Vmax %3.0f", t.lapCount(), t.sessionMaxSpeed());
+  snprintf(b, sizeof(b), "S%d L%d  Vmax %3.0f", t.sessionIndex(), t.lapCount(),
+           t.sessionMaxSpeed());
   u8g2_.drawStr(0, 10, b);
+
+  // Theoretical best (sum of the best sectors) and session average.
+  char tb[12], avg[12];
+  fmtLapTime(tb, sizeof(tb), t.theoreticalBestMs(), false);
+  fmtLapTime(avg, sizeof(avg), t.sessionAvgMs(), false);
+  snprintf(b, sizeof(b), "TB %s  Avg %s",
+           t.theoreticalBestMs() ? tb : "-", t.lapCount() ? avg : "-");
+  u8g2_.drawStr(0, 21, b);
 
   int stored = t.storedLaps();
   int row = 0;
-  for (int i = stored - 1; i >= 0 && row < 4; i--, row++) {
+  for (int i = stored - 1; i >= 0 && row < 3; i--, row++) {
     fmtLapTime(tm, sizeof(tm), t.lap(i).ms, true);
     snprintf(b, sizeof(b), "%2d  %s %s", i + 1, tm, i == t.bestLapIndex() ? "*" : "");
-    u8g2_.drawStr(4, 22 + row * 10, b);
+    u8g2_.drawStr(4, 32 + row * 10, b);
   }
-  if (stored == 0) u8g2_.drawStr(4, 32, "(no laps yet)");
+  if (stored == 0) u8g2_.drawStr(4, 40, "(no laps yet)");
 
   u8g2_.setFont(u8g2_font_6x10_tf);
   drawCentered("long press = reset", 63);
@@ -184,17 +212,25 @@ void Display::drawGps(const GpsView& g) {
   u8g2_.drawStr(0, 39, b);
   snprintf(b, sizeof(b), "Spd %.1f km/h", g.speedKmh);
   u8g2_.drawStr(0, 49, b);
-  snprintf(b, sizeof(b), "Age %lums  %lubd", (unsigned long)g.fixAgeMs, (unsigned long)g.baud);
-  u8g2_.drawStr(0, 59, b);
+  if (g.wifi) {
+    u8g2_.drawStr(0, 59, "WiFi ON 192.168.4.1");
+  } else {
+    snprintf(b, sizeof(b), "Age %lums  %lubd  [W]", (unsigned long)g.fixAgeMs,
+             (unsigned long)g.baud);
+    u8g2_.drawStr(0, 59, b);
+  }
 }
 
-void Display::drawLinePage(const LapTimer& t, const GpsView& g) {
+void Display::drawLinePage(const LapTimer& t, const GpsView& g, const char* trackName) {
   char b[32];
   u8g2_.setFont(u8g2_font_6x12_tf);
-  u8g2_.drawStr(0, 10, t.line().isSet ? "LINE: set" : "LINE: not set");
+  snprintf(b, sizeof(b), "TRACK: %s", trackName);
+  u8g2_.drawStr(0, 10, b);
   if (t.line().isSet && !isnan(t.distToLineM())) {
-    snprintf(b, sizeof(b), "Dist %4.0fm  Hdg %3.0f", t.distToLineM(), t.line().headingDeg);
+    snprintf(b, sizeof(b), "Line %4.0fm  Hdg %3.0f", t.distToLineM(), t.line().headingDeg);
     u8g2_.drawStr(0, 22, b);
+  } else {
+    u8g2_.drawStr(0, 22, t.line().isSet ? "Line set" : "Line not set");
   }
   u8g2_.setFont(u8g2_font_6x10_tf);
   u8g2_.drawStr(0, 36, "Long press while");

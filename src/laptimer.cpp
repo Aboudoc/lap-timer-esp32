@@ -1,5 +1,10 @@
 #include "laptimer.h"
-#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#ifndef DEG_TO_RAD
+#define DEG_TO_RAD 0.017453292519943295
+#endif
 
 // Difference between two "ms since midnight" times, robust across midnight.
 static uint32_t dayDiff(uint32_t later, uint32_t earlier) {
@@ -23,27 +28,85 @@ void LapTimer::setLine(const StartLine& line) {
   dirY_ = cosf(h);  // north component
   mPerDegLat_ = 111194.9f;
   mPerDegLon_ = 111194.9f * cosf((float)(line.lat * DEG_TO_RAD));
+  clearTrackData();  // the gate moved: old reference/records no longer apply
   resetSession();
+}
+
+void LapTimer::clearTrackData() {
+  ref_.n = 0;
+  refTotalDist_ = 0;
+  allTimeBest_ = 0;
+  newAllTimeBest_ = false;
+  sectorsImproved_ = false;
+  for (int k = 0; k < NUM_SECTORS; k++) bestSectorMs_[k] = 0;
+  computeBoundaries();
 }
 
 void LapTimer::resetSession() {
   timing_ = false;
+  sessionIdx_ = 1;
   lapCount_ = 0;
   lastLapMs_ = 0;
   lastLapMaxSpeed_ = 0;
   bestMs_ = 0;
   bestIdx_ = -1;
+  sessionTotalMs_ = 0;
   lastDeltaBest_ = 0;
+  lastLapWasRecord_ = false;
   curMaxSpeed_ = 0;
   sessMaxSpeed_ = 0;
   hasPrev_ = false;
   distToLine_ = NAN;
   cur_.n = 0;
-  ref_.n = 0;
   curDist_ = 0;
   refWalk_ = 0;
   predDelta_ = 0;
   predValid_ = false;
+  lastLapHasSectors_ = false;
+  secIdx_ = 0;
+  lastSplitElapsed_ = 0;
+  prevPtDist_ = 0;
+  prevPtElapsed_ = 0;
+}
+
+// A long stop happened (pits, lunch): keep the track data, wipe the session.
+void LapTimer::newSessionReset() {
+  sessionIdx_++;
+  lapCount_ = 0;
+  lastLapMs_ = 0;
+  lastLapMaxSpeed_ = 0;
+  bestMs_ = 0;
+  bestIdx_ = -1;
+  sessionTotalMs_ = 0;
+  lastDeltaBest_ = 0;
+  lastLapWasRecord_ = false;
+  sessMaxSpeed_ = 0;
+  lastLapHasSectors_ = false;
+}
+
+void LapTimer::commitReference(uint16_t n) {
+  ref_.n = (n <= TRACE_MAX_SAMPLES) ? n : TRACE_MAX_SAMPLES;
+  refWalk_ = 0;
+  computeBoundaries();
+}
+
+void LapTimer::setBestSectors(const uint32_t* s) {
+  for (int k = 0; k < NUM_SECTORS; k++) bestSectorMs_[k] = s[k];
+}
+
+uint32_t LapTimer::theoreticalBestMs() const {
+  uint32_t sum = 0;
+  for (int k = 0; k < NUM_SECTORS; k++) {
+    if (bestSectorMs_[k] == 0) return 0;
+    sum += bestSectorMs_[k];
+  }
+  return sum;
+}
+
+// Local coordinates in meters, centered on the line (x = east, y = north).
+void LapTimer::toLocal(double lat, double lon, float& x, float& y) const {
+  x = (float)((lon - line_.lon) * mPerDegLon_);
+  y = (float)((lat - line_.lat) * mPerDegLat_);
 }
 
 void LapTimer::traceAppend(float d, uint32_t ms) {
@@ -60,17 +123,66 @@ void LapTimer::traceAppend(float d, uint32_t ms) {
 void LapTimer::traceRestart(float initialDist, uint32_t initialElapsed) {
   cur_.n = 0;
   traceAppend(0.0f, 0);
-  curDist_ = initialDist;
-  traceAppend(curDist_, initialElapsed);
+  curDist_ = 0;
   refWalk_ = 0;
+  secIdx_ = 0;
+  lastSplitElapsed_ = 0;
+  prevPtDist_ = 0;
+  prevPtElapsed_ = 0;
+  for (int k = 0; k < NUM_SECTORS; k++) curSectorMs_[k] = 0;
+  curDist_ = initialDist;
+  advancePoint(curDist_, initialElapsed);
 }
 
-// The lap that just finished is the new session best: it becomes the
-// reference for the predictive delta.
+// Moves the lap forward to (distance d, elapsed time): records the trace
+// point and detects sector-boundary crossings with linear interpolation.
+void LapTimer::advancePoint(float d, uint32_t elapsed) {
+  while (secIdx_ < NUM_SECTORS - 1 && refTotalDist_ > 0 && d >= secBoundary_[secIdx_]) {
+    float bd = secBoundary_[secIdx_];
+    float f = (d > prevPtDist_) ? (bd - prevPtDist_) / (d - prevPtDist_) : 0.0f;
+    if (f < 0.0f) f = 0.0f;
+    if (f > 1.0f) f = 1.0f;
+    uint32_t tb = prevPtElapsed_ + (uint32_t)(f * (float)(elapsed - prevPtElapsed_));
+    curSectorMs_[secIdx_] = tb - lastSplitElapsed_;
+    lastSplitElapsed_ = tb;
+    secIdx_++;
+  }
+  prevPtDist_ = d;
+  prevPtElapsed_ = elapsed;
+  traceAppend(d, elapsed);
+}
+
+// The lap that just finished is the new all-time best: it becomes the
+// reference for the predictive delta and the sector boundaries.
 void LapTimer::adoptReference() {
   memcpy(ref_.dist, cur_.dist, cur_.n * sizeof(float));
   memcpy(ref_.tMs, cur_.tMs, cur_.n * sizeof(uint32_t));
   ref_.n = cur_.n;
+  computeBoundaries();
+}
+
+void LapTimer::computeBoundaries() {
+  refTotalDist_ = ref_.n ? ref_.dist[ref_.n - 1] : 0.0f;
+  for (int k = 0; k < NUM_SECTORS - 1; k++) {
+    secBoundary_[k] = refTotalDist_ * (float)(k + 1) / (float)NUM_SECTORS;
+  }
+}
+
+// Called at lap completion: closes the last sector, computes deltas vs the
+// best sectors and updates them.
+void LapTimer::finishLapSectors(uint32_t lapMs) {
+  lastLapHasSectors_ = (refTotalDist_ > 0 && secIdx_ == NUM_SECTORS - 1);
+  if (!lastLapHasSectors_) return;
+  curSectorMs_[NUM_SECTORS - 1] = lapMs - lastSplitElapsed_;
+  for (int k = 0; k < NUM_SECTORS; k++) {
+    lastLapSectorMs_[k] = curSectorMs_[k];
+    lastSectorDelta_[k] = bestSectorMs_[k]
+        ? (int32_t)curSectorMs_[k] - (int32_t)bestSectorMs_[k] : 0;
+    if (bestSectorMs_[k] == 0 || curSectorMs_[k] < bestSectorMs_[k]) {
+      bestSectorMs_[k] = curSectorMs_[k];
+      sectorsImproved_ = true;
+    }
+  }
 }
 
 // Elapsed time of the reference lap at distance d, linearly interpolated.
@@ -86,12 +198,6 @@ uint32_t LapTimer::refTimeAtDist(float d) {
   if (f < 0.0f) f = 0.0f;
   if (f > 1.0f) f = 1.0f;
   return t0 + (uint32_t)(f * (float)(t1 - t0));
-}
-
-// Local coordinates in meters, centered on the line (x = east, y = north).
-void LapTimer::toLocal(double lat, double lon, float& x, float& y) const {
-  x = (float)((lon - line_.lon) * mPerDegLon_);
-  y = (float)((lat - line_.lat) * mPerDegLat_);
 }
 
 // Tests whether segment a->b crosses the gate in the right direction.
@@ -167,20 +273,33 @@ bool LapTimer::onFix(const GpsFix& fix) {
       traceRestart(segLen * (1.0f - t), dayDiff(fix.msOfDay, crossMsOfDay));
     } else {
       uint32_t lapMs = dayDiff(crossMsOfDay, lastCrossMsOfDay_);
-      if (lapMs >= MIN_LAP_MS) {
-        traceAppend(curDist_ + segLen * t, lapMs);  // close the trace exactly on the line
+      if (lapMs > SESSION_GAP_MS) {
+        // Long stop (pits, lunch break): this crossing opens a new session.
+        newSessionReset();
+        lastCrossMsOfDay_ = crossMsOfDay;
+        lastCrossLocalMs_ = crossLocalMs;
+        curMaxSpeed_ = fix.speedKmh;
+        traceRestart(segLen * (1.0f - t), dayDiff(fix.msOfDay, crossMsOfDay));
+      } else if (lapMs >= MIN_LAP_MS) {
+        advancePoint(curDist_ + segLen * t, lapMs);  // close the lap exactly on the line
+        finishLapSectors(lapMs);
         if (lapCount_ < MAX_LAPS) {
           laps_[lapCount_].ms = lapMs;
           laps_[lapCount_].maxSpeedKmh = curMaxSpeed_;
         }
         lastLapMs_ = lapMs;
         lastLapMaxSpeed_ = curMaxSpeed_;
-        lastDeltaBest_ = (bestMs_ > 0) ? (int32_t)lapMs - (int32_t)bestMs_ : 0;
-        bool newBest = (bestMs_ == 0 || lapMs < bestMs_);
-        if (newBest) {
+        sessionTotalMs_ += lapMs;
+        lastDeltaBest_ = allTimeBest_ ? (int32_t)lapMs - (int32_t)allTimeBest_ : 0;
+        if (bestMs_ == 0 || lapMs < bestMs_) {
           bestMs_ = lapMs;
           bestIdx_ = lapCount_;
+        }
+        lastLapWasRecord_ = (allTimeBest_ == 0 || lapMs < allTimeBest_);
+        if (lastLapWasRecord_) {
+          allTimeBest_ = lapMs;
           adoptReference();
+          newAllTimeBest_ = true;
         }
         lapCount_++;
         lastCrossMsOfDay_ = crossMsOfDay;
@@ -191,12 +310,12 @@ bool LapTimer::onFix(const GpsFix& fix) {
       } else if (haveSeg) {
         // Debounced crossing: ignored, but the distance still counts.
         curDist_ += segLen;
-        traceAppend(curDist_, dayDiff(fix.msOfDay, lastCrossMsOfDay_));
+        advancePoint(curDist_, dayDiff(fix.msOfDay, lastCrossMsOfDay_));
       }
     }
   } else if (timing_ && haveSeg) {
     curDist_ += segLen;
-    traceAppend(curDist_, dayDiff(fix.msOfDay, lastCrossMsOfDay_));
+    advancePoint(curDist_, dayDiff(fix.msOfDay, lastCrossMsOfDay_));
   }
 
   // Live delta vs the reference lap, compared at equal distance.
