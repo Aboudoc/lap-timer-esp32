@@ -28,6 +28,8 @@ is remembered for every future session. Real-world precision: ~0.1-0.3 s
 
 ➡ **[FEATURES.md](FEATURES.md)** — the full feature tour, and the
 purchase-to-feature roadmap (what to buy to unlock what).
+➡ **[TODO.md](TODO.md)** — the project roadmap (A → E) with the shopping
+list each project needs.
 
 ---
 
