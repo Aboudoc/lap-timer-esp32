@@ -1,6 +1,6 @@
 #include "ble_racechrono.h"
 
-#if ENABLE_BLE_RACECHRONO
+#if BT_MODE == BT_MODE_RACECHRONO
 
 #include <NimBLEDevice.h>
 #include <math.h>
@@ -145,4 +145,4 @@ void BleRaceChrono::buildMainPacket(uint8_t out[20], const GpsFix& fix, int sats
   out[19] = 0xFF;  // VDOP not available (GSA sentences are disabled)
 }
 
-#endif  // ENABLE_BLE_RACECHRONO
+#endif  // BT_MODE == BT_MODE_RACECHRONO

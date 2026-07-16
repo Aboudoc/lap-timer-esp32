@@ -3,7 +3,7 @@
 #include "config.h"
 #include "gps.h"
 
-#if ENABLE_BLE_RACECHRONO
+#if BT_MODE == BT_MODE_RACECHRONO
 
 class NimBLECharacteristic;
 
@@ -31,4 +31,4 @@ class BleRaceChrono {
   volatile bool connected_ = false;
 };
 
-#endif  // ENABLE_BLE_RACECHRONO
+#endif  // BT_MODE == BT_MODE_RACECHRONO

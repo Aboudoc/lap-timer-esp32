@@ -11,8 +11,9 @@ every pass over the start/finish line and shows:
   **delta vs your best lap** (`-0.32 vs best`),
 - last lap, best lap, speed, lap count,
 - it **logs every lap to a CSV file** in its internal flash (retrievable over USB),
-- and it can **stream the GPS to the RaceChrono app** over Bluetooth LE
-  ("RaceChrono DIY" protocol) for full session analysis on your phone.
+- and it can **stream the GPS to your phone over Bluetooth**: to the RaceChrono
+  app (BLE, iOS + Android) or as a generic Bluetooth NMEA GPS for TrackAddict,
+  Harry's LapTimer and mock-location apps (Android).
 
 The start line is set once, while riding, with a single button press — then it
 is remembered for every future session. Real-world precision: ~0.1-0.3 s
@@ -248,23 +249,55 @@ riding.
 | `MIN_LAP_MS` | 30 s | minimum lap time (double-detection guard) |
 | `MIN_CROSS_SPEED_KMH` | 15 km/h | minimum speed for a valid crossing |
 | `GPS_MEAS_RATE_MS` | 200 ms | GPS rate (5 Hz = NEO-6M maximum) |
-| `ENABLE_BLE_RACECHRONO` | 1 | RaceChrono BLE streaming (0 = off, saves ~10-15 mA) |
-| `BLE_DEVICE_NAME` | LapTimer ESP32 | name shown in the RaceChrono app |
+| `BT_MODE` | RACECHRONO | Bluetooth mode: `RACECHRONO` (BLE), `NMEA` (Bluetooth Classic), `OFF` |
+| `BT_DEVICE_NAME` | LapTimer ESP32 | name the phone sees |
 | `PIN_*` | — | full pinout |
 
 Display mounted upside down? Change `U8G2_R0` to `U8G2_R2` in `src/display.h`.
 
-### RaceChrono over Bluetooth (optional)
+### Phone apps over Bluetooth (optional)
 
-The device advertises itself as a **RaceChrono DIY** GPS receiver. In the
-[RaceChrono](https://racechrono.com/) app: **Settings → Add other device →
-RaceChrono DIY → "LapTimer ESP32"**, then use it as the GPS receiver for your
-sessions — you get lap analysis, sectors and traces on your phone, recorded in
-parallel with the on-board timer. The phone can stay in your pocket or in the
-pits (leave RaceChrono recording).
+The on-board timer is fully standalone — a phone is never required. But the
+device can also feed a lap-timing app, in one of two modes (build-time choice,
+the two Bluetooth stacks cannot coexist):
 
-It also works in **simulation mode**: flash `esp32dev-sim` and RaceChrono
-receives the virtual laps — handy to learn the app from your couch.
+| App | iOS | Android | Mode to flash |
+|---|---|---|---|
+| RaceChrono | ✅ | ✅ | `RACECHRONO` (default build) |
+| TrackAddict | ❌ Apple MFi lock | ✅ | `NMEA` |
+| Harry's LapTimer | ❌ | ✅ | `NMEA` |
+| LapTrophy & others | ❌ | ✅ via mock location | `NMEA` |
+
+**RaceChrono mode** (default, BLE, lightest on battery):
+
+```bash
+pio run -e esp32dev -t upload
+```
+
+In the [RaceChrono](https://racechrono.com/) app: **Settings → Add other
+device → RaceChrono DIY → "LapTimer ESP32"**, then use it as the GPS receiver
+for your sessions — lap analysis, sectors and traces on your phone, recorded
+in parallel with the on-board timer.
+
+**Generic NMEA mode** (Bluetooth Classic, Android only):
+
+```bash
+pio run -e esp32dev-nmea -t upload
+```
+
+The device then behaves like any off-the-shelf Bluetooth GPS receiver
+(standard GGA/RMC sentences at 5 Hz). Pair it in the **Android Bluetooth
+settings** first, then:
+
+- **TrackAddict**: Settings → GPS → Bluetooth GPS → select "LapTimer ESP32".
+- **LapTrophy** and apps without external-GPS support: install a
+  mock-location bridge app (e.g. "Bluetooth GPS"), enable it as mock location
+  provider in the Android developer options → every app on the phone now uses
+  the lap timer's GPS.
+
+Both modes also work in **simulation mode** (`esp32dev-sim` is RaceChrono +
+sim) — handy to learn the apps from your couch. Note: NMEA mode draws more
+current than BLE (Bluetooth Classic radio, CPU at 160 MHz vs 80 MHz).
 
 ---
 
@@ -283,6 +316,8 @@ src/
 │                 predictive delta (lap traces + reference lap)
 ├── ble_racechrono.cpp/.h  "RaceChrono DIY" BLE device (NimBLE): streams the
 │                 5 Hz GPS to the RaceChrono app
+├── bt_nmea.cpp/.h   Generic Bluetooth Classic NMEA GPS (SPP): GGA/RMC
+│                 sentences for TrackAddict & co on Android
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
 ├── storage.cpp/.h   Persistence: line + best in NVS, CSV log in LittleFS
 │                 (internal flash)
@@ -318,7 +353,9 @@ The interesting parts:
 | GPS page shows ~1.0Hz | The 5 Hz configuration didn't get through: check the RX wire (GPIO17 → GPS RX), reboot outdoors |
 | Random reboots on battery | MT3608 badly adjusted or battery empty — measure the voltage on VIN |
 | Laps not detected | Line set at the wrong spot/heading (set it again), or laps < 30 s (`MIN_LAP_MS`) |
-| Not visible in RaceChrono | `ENABLE_BLE_RACECHRONO` set to 0, or another phone is already connected (one client at a time) |
+| Not visible in RaceChrono | NMEA or OFF build flashed instead of the default, or another phone is already connected (one client at a time) |
+| Not visible in TrackAddict | RaceChrono build flashed instead of `esp32dev-nmea`, or not paired in the Android Bluetooth settings first |
+| No data in the app despite connection | The device only streams once it has a GPS fix — wait for `FIX` on the GPS page |
 | No delta on the RACE page | Normal on lap 1 — the delta needs a completed reference lap (from lap 2) |
 
 ---

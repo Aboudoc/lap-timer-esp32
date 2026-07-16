@@ -17,16 +17,19 @@
 #include "storage.h"
 #include "button.h"
 #include "ble_racechrono.h"
+#include "bt_nmea.h"
 
-static const char* VERSION = "v1.1";
+static const char* VERSION = "v1.2";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
 Display   display;
 Storage   storage;
 Button    btnBoot, btnExt;
-#if ENABLE_BLE_RACECHRONO
-BleRaceChrono ble;
+#if BT_MODE == BT_MODE_RACECHRONO
+BleRaceChrono btLink;  // RaceChrono app, over BLE
+#elif BT_MODE == BT_MODE_NMEA
+BtNmea btLink;         // generic Bluetooth NMEA GPS (TrackAddict & co, Android)
 #endif
 
 Page     page = Page::Race;
@@ -78,8 +81,8 @@ void simLoop() {
   simFix.valid     = true;
 
   if (lapTimer.onFix(simFix)) handleLapDone();
-#if ENABLE_BLE_RACECHRONO
-  ble.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
+#if BT_MODE != BT_MODE_OFF
+  btLink.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
 #endif
 }
 #endif
@@ -121,10 +124,14 @@ static GpsView buildGpsView() {
 }
 
 void setup() {
-  setCpuFrequencyMhz(80);  // no need for more -> saves battery
+#if BT_MODE == BT_MODE_NMEA
+  setCpuFrequencyMhz(160);  // Bluetooth Classic needs more headroom than BLE
+#else
+  setCpuFrequencyMhz(80);   // no need for more -> saves battery
+#endif
   Serial.begin(SERIAL_BAUD);
   WiFi.mode(WIFI_OFF);
-#if !ENABLE_BLE_RACECHRONO
+#if BT_MODE == BT_MODE_OFF
   btStop();
 #endif
 
@@ -149,8 +156,8 @@ void setup() {
   gpsMod.begin(Serial2);
 #endif
 
-#if ENABLE_BLE_RACECHRONO
-  ble.begin(BLE_DEVICE_NAME);
+#if BT_MODE != BT_MODE_OFF
+  btLink.begin(BT_DEVICE_NAME);
 #endif
 
   Serial.println("Lap timer ready. Type 'h' for help.");
@@ -164,10 +171,10 @@ void loop() {
 #else
   if (gpsMod.update()) {
     if (lapTimer.onFix(gpsMod.fix())) handleLapDone();
-#if ENABLE_BLE_RACECHRONO
+#if BT_MODE != BT_MODE_OFF
     int y = 0, mo = 0, dd = 0;
     gpsMod.dateYmd(y, mo, dd);
-    ble.onFix(gpsMod.fix(), gpsMod.sats(), gpsMod.hdop(), gpsMod.hasFix(), y, mo, dd);
+    btLink.onFix(gpsMod.fix(), gpsMod.sats(), gpsMod.hdop(), gpsMod.hasFix(), y, mo, dd);
 #endif
   }
 #endif
@@ -189,8 +196,8 @@ void loop() {
   if (now - lastRenderMs >= DISPLAY_PERIOD_MS) {
     lastRenderMs = now;
     GpsView gv = buildGpsView();
-#if ENABLE_BLE_RACECHRONO
-    gv.ble = ble.connected();
+#if BT_MODE != BT_MODE_OFF
+    gv.ble = btLink.connected();
 #endif
     display.render(page, lapTimer, gv, now, bestEver);
   }

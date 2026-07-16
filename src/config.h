@@ -14,12 +14,22 @@ constexpr uint32_t GPS_TARGET_BAUD    = 57600;  // baud rate after configuration
 constexpr uint16_t GPS_MEAS_RATE_MS   = 200;    // measurement period: 200 ms = 5 Hz
 constexpr uint32_t GPS_FIX_MAX_GAP_MS = 1500;   // beyond this: reception gap, no interpolation
 
-// ================= Bluetooth (RaceChrono) =================
-// 1 = stream the GPS over BLE with the "RaceChrono DIY" protocol (the device
-// shows up in the RaceChrono app as a GPS receiver). 0 = disable, saves
-// ~10-15 mA of battery.
-#define ENABLE_BLE_RACECHRONO 1
-constexpr char BLE_DEVICE_NAME[] = "LapTimer ESP32";
+// ================= Bluetooth -> phone apps =================
+// BT_MODE_RACECHRONO : BLE "RaceChrono DIY" device -> RaceChrono app
+//                      (iOS + Android). Lightest on the battery.
+// BT_MODE_NMEA       : Bluetooth Classic, generic NMEA GPS -> TrackAddict,
+//                      Harry's LapTimer, mock-location apps (Android only;
+//                      iOS locks Bluetooth GPS to MFi-certified hardware).
+// BT_MODE_OFF        : no Bluetooth at all, lowest power draw.
+// The two Bluetooth stacks cannot coexist, so this is a build-time choice:
+// the default build is RACECHRONO, `pio run -e esp32dev-nmea` builds NMEA.
+#define BT_MODE_OFF        0
+#define BT_MODE_RACECHRONO 1
+#define BT_MODE_NMEA       2
+#ifndef BT_MODE
+#define BT_MODE BT_MODE_RACECHRONO
+#endif
+constexpr char BT_DEVICE_NAME[] = "LapTimer ESP32";
 
 // ===================== Lap detection =====================
 constexpr float    LINE_HALF_WIDTH_M     = 20.0f;   // half-width of the start/finish gate
