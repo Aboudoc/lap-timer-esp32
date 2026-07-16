@@ -47,6 +47,15 @@ stored track within 5 km is loaded automatically — arrive at MSP, turn the
 device on, it says `TRACK MSP` and your records are armed. Rename, select or
 delete tracks from the pit-mode web app or the serial console (`T`, `N`).
 
+### 6b. ECU telemetry (Kawasaki KDS)
+With an L9637D transceiver (~40 ฿) on the bike's diagnostic plug, the device
+reads **RPM, throttle position, gear, coolant temperature and speed** straight
+from the ECU. The ECU page shows the gear big, RPM and a live throttle bar —
+and everything is streamed to RaceChrono as extra channels, so your session
+analysis shows *"in turn 3 you only opened 60% throttle and short-shifted"*.
+Wiring, bike verification steps and RaceChrono channel formulas are in the
+README (Step 7).
+
 ### 6. Automatic sessions
 A stop longer than 5 minutes (pit stop, red flag, lunch) starts a new session
 on the next crossing: the lap list and session stats reset, the track records
@@ -139,6 +148,7 @@ work remains once the part is on the desk.
 | Buy | ~Price | Feature unlocked | Code status |
 |---|---|---|---|
 | **u-blox NEO-M8N or M10 GPS module** | 250-400 ฿ | 10-25 Hz fixes → lap precision from ~0.2 s down to **~0.05 s**, sharper predictive delta | ✅ Works as-is: same wiring, same UBX config — just raise `GPS_MEAS_RATE_MS` |
+| **L9637D + 510Ω/10kΩ + 4-pin plug** | ~150 ฿ | **ECU telemetry**: RPM, throttle, gear, coolant → screen + RaceChrono channels | ✅ Firmware ready (v1.4) — wire it and it links (README Step 7) |
 | **MPU6050 IMU** (accelerometer + gyro) | 40-80 ฿ | **Lean angle** display and per-lap max, G-force logging, braking-point analysis | 🔧 New code needed (I2C driver + sensor fusion) — the most fun future project |
 | **2.42" SSD1309 OLED** | 150-250 ฿ | Twice the screen: bigger digits, delta readable further into the fairing | ✅ One line to change (U8g2 constructor) |
 | **2 × 100 kΩ resistors** | ~5 ฿ | **Battery gauge** on the top bar (voltage divider into an ADC pin) | 🔧 Small addition (~30 lines) |

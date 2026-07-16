@@ -20,8 +20,9 @@
 #include "ble_racechrono.h"
 #include "bt_nmea.h"
 #include "pit.h"
+#include "kds.h"
 
-static const char* VERSION = "v1.3";
+static const char* VERSION = "v1.4";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
@@ -29,6 +30,9 @@ Display   display;
 Storage   storage;
 Button    btnBoot, btnExt;
 PitMode   pit;
+#if ENABLE_KDS
+KdsBus    kdsBus;
+#endif
 #if BT_MODE == BT_MODE_RACECHRONO
 BleRaceChrono btLink;  // RaceChrono app, over BLE
 #elif BT_MODE == BT_MODE_NMEA
@@ -57,6 +61,7 @@ void togglePitMode();
 // and timing logic without a GPS. See the "esp32dev-sim" environment.
 #ifdef SIMULATE_GPS
 static GpsFix   simFix;
+static EcuData  simEcu;
 static uint32_t simLastMs = 0;
 static float    simTheta = 0;
 constexpr double SIM_LAT0 = 13.7563;
@@ -90,6 +95,16 @@ void simLoop() {
   simFix.localMs   = now;
   simFix.valid     = true;
 
+  // Fake engine data derived from the simulated speed.
+  simEcu.link = true;
+  simEcu.speedKmh = simFix.speedKmh;
+  simEcu.gear = 1 + (int)(simFix.speedKmh / 40.0f);
+  if (simEcu.gear > 6) simEcu.gear = 6;
+  simEcu.rpm = 3000 + (int)(simFix.speedKmh * 55.0f) % 9000;
+  simEcu.throttlePct = 50.0f + 50.0f * sinf(now / 2500.0f);
+  simEcu.coolantC = 82;
+  simEcu.updatedMs = now;
+
   if (lapTimer.onFix(simFix)) handleLapDone();
 #if BT_MODE != BT_MODE_OFF
   if (!pitActive) btLink.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
@@ -104,6 +119,26 @@ static const GpsFix& currentFix() {
 #else
   return gpsMod.fix();
 #endif
+}
+
+static const EcuData& currentEcu() {
+#ifdef SIMULATE_GPS
+  return simEcu;
+#elif ENABLE_KDS
+  return kdsBus.data();
+#else
+  static EcuData empty;
+  return empty;
+#endif
+}
+
+// Skip the ECU page when the KDS bridge is compiled out.
+static Page nextPage(Page p) {
+  int n = ((int)p + 1) % (int)Page::COUNT;
+#if !ENABLE_KDS && !defined(SIMULATE_GPS)
+  if ((Page)n == Page::Ecu) n = (n + 1) % (int)Page::COUNT;
+#endif
+  return (Page)n;
 }
 
 static float approxDistM(double lat1, double lon1, double lat2, double lon2) {
@@ -243,6 +278,10 @@ void setup() {
   gpsMod.begin(Serial2);
 #endif
 
+#if ENABLE_KDS && !defined(SIMULATE_GPS)
+  kdsBus.begin(Serial1);
+#endif
+
   if (pitActive) {
     PitActions actions{pitSelectTrack, pitRenameTrack, pitDeleteTrack,
                        pitActiveName, pitActiveBest};
@@ -272,6 +311,33 @@ void loop() {
   // fixes arrive through handleSerial()
 #else
   if (gpsMod.update()) onNewFix();
+#endif
+
+#if ENABLE_KDS && !defined(SIMULATE_GPS)
+  if (!pitActive) kdsBus.loop();
+#endif
+
+  // Stream the engine channels to RaceChrono as a fabricated CAN frame.
+#if BT_MODE == BT_MODE_RACECHRONO
+  {
+    static uint32_t lastCanMs = 0;
+    const EcuData& e = currentEcu();
+    if (!pitActive && e.link && now - lastCanMs >= ECU_CAN_PERIOD_MS &&
+        now - e.updatedMs < 2000) {
+      lastCanMs = now;
+      uint8_t p[8];
+      p[0] = (uint8_t)(e.rpm >> 8);
+      p[1] = (uint8_t)(e.rpm & 0xFF);
+      p[2] = (uint8_t)(e.throttlePct >= 0 ? e.throttlePct : 0);
+      p[3] = (uint8_t)(e.gear >= 0 ? e.gear : 0xFF);
+      float c = e.coolantC > -100 ? e.coolantC + 40.0f : 255.0f;
+      p[4] = (uint8_t)(c < 0 ? 0 : (c > 255 ? 255 : c));
+      p[5] = (uint8_t)(e.speedKmh >= 0 && e.speedKmh < 255 ? e.speedKmh : 255);
+      p[6] = 0;
+      p[7] = 0;
+      btLink.sendCan(ECU_CAN_ID, p, sizeof(p));
+    }
+  }
 #endif
 
   ButtonEvent ev = btnBoot.poll();
@@ -306,7 +372,7 @@ void loop() {
   if (now - lastRenderMs >= DISPLAY_PERIOD_MS) {
     lastRenderMs = now;
     GpsView gv = buildGpsView();
-    display.render(page, lapTimer, gv, now, activeTrackName);
+    display.render(page, lapTimer, gv, currentEcu(), now, activeTrackName);
   }
 }
 
@@ -342,14 +408,14 @@ void togglePitMode() {
   storage.setPitFlag(!pitActive);
   display.notify(pitActive ? "WIFI OFF, REBOOT" : "WIFI ON, REBOOT");
   GpsView gv = buildGpsView();
-  display.render(page, lapTimer, gv, millis(), activeTrackName);
+  display.render(page, lapTimer, gv, currentEcu(), millis(), activeTrackName);
   delay(900);
   ESP.restart();
 }
 
 void handleButton(ButtonEvent ev) {
   if (ev == ButtonEvent::Short) {
-    page = (Page)(((int)page + 1) % (int)Page::COUNT);
+    page = nextPage(page);
     return;
   }
   // Long press: action depends on the page. Nothing on RACE to avoid
@@ -473,6 +539,13 @@ void handleSerial() {
         GpsView g = buildGpsView();
         Serial.printf("GPS: fix=%d sats=%d hdop=%.1f %.1fHz %lu baud\n",
                       g.hasFix, g.sats, g.hdop, g.rateHz, (unsigned long)g.baud);
+        const EcuData& e = currentEcu();
+        if (e.link) {
+          Serial.printf("ECU: %d rpm, gear %d, throttle %.0f%%, coolant %.0fC, %.0f km/h\n",
+                        e.rpm, e.gear, e.throttlePct, e.coolantC, e.speedKmh);
+        } else {
+          Serial.println("ECU: no link");
+        }
         break;
       }
       case 'T': {

@@ -235,6 +235,47 @@ with the battery connected is fine, no conflict.
 4. In the evening: plug in USB, `pio device monitor`, type `d`, copy your
    times (times are UTC; Bangkok = UTC+7).
 
+### Step 7 — ECU bridge (optional, Kawasaki)
+
+Reads **RPM, throttle, gear, coolant temp and speed** from the bike's
+diagnostic plug (Kawasaki KDS protocol over K-line), shows them on the ECU
+page and streams them to RaceChrono. Parts: an **L9637D** K-line transceiver,
+a **510 Ω** and a **10 kΩ** resistor, and the bike-side 4-pin connector.
+
+**First, verify the bike (before soldering anything):**
+
+1. Find the diagnostic connector: on the Ninja 400 it is a **white 4-pin
+   plug** under the seat, taped to the harness near the battery/ECU.
+2. With a multimeter, ignition ON:
+   - one pin has continuity to the battery minus → **GND**;
+   - one pin sits at battery voltage (~12 V) → **+12 V supply**;
+   - the pin that idles around **10-12 V** and is neither of the above is the
+     **K-line** → you're good, this firmware applies as-is;
+   - if instead you find **two pins around 2.5 V each**, the bike uses
+     **CAN**: don't wire the L9637D — the bridge then needs a CAN transceiver
+     and a small firmware change (open an issue / ask).
+3. Wire the L9637D as shown in Step 5's diagram box below:
+
+```
+ESP32 GPIO27 (TX) ──────────── L9637D TX
+ESP32 GPIO26 (RX) ──────────── L9637D RX ──[10k]── 3V3 (pull-up)
+Bike K-line pin  ──────────── L9637D K   ──[510R]── +12V
+Bike +12V (fused) ──────────── L9637D VS
+Bike GND ── ESP32 GND ──────── L9637D GND      (one common ground!)
+```
+
+✓ *Checkpoint:* ignition ON (engine off is fine): the serial console prints
+`[KDS] ECU link established` and the ECU page shows gear, RPM and the
+throttle bar. Blip the throttle: the bar follows. If nothing after ~10 s, the
+firmware retries every 5 s — check TX/RX and the ground.
+
+**RaceChrono channels:** the engine data is streamed as a CAN frame with
+PID `0x100` (bytes: 0-1 RPM big-endian, 2 throttle %, 3 gear, 4 coolant
+°C + 40, 5 speed km/h). In RaceChrono: add channels on the DIY device with
+PID 256 and the formulas `bytesToUInt(raw, 0, 2)` (RPM),
+`bytesToUInt(raw, 2, 1)` (throttle %), `bytesToUInt(raw, 3, 1)` (gear),
+`bytesToUInt(raw, 4, 1) - 40` (coolant °C).
+
 ---
 
 ## 4. Usage — quick reference
@@ -245,6 +286,7 @@ with the battery connected is fine, no conflict.
 |---|---|---|
 | **RACE** | current lap (big), speed, sats, live delta + Best (or Last/Best) | — |
 | **SESSION** | session #, laps (best `*`), vmax, theoretical best, average | reset session |
+| **ECU** | gear (big), RPM, throttle bar, coolant temp (KDS bridge) | — |
 | **GPS** | fix, satellites, HDOP, rate Hz, position | **toggle pit mode (WiFi)** |
 | **LINE** | active track, line status and distance | set the line here |
 
@@ -368,6 +410,10 @@ src/
 │                 5 Hz GPS to the RaceChrono app
 ├── bt_nmea.cpp/.h   Generic Bluetooth Classic NMEA GPS (SPP): GGA/RMC
 │                 sentences for TrackAddict & co on Android
+├── kds_proto.h   Kawasaki KDS protocol (framing, parsing, unit conversions —
+│                 pure logic, unit-tested on the host)
+├── kds.cpp/.h    K-line driver: ISO 14230 fast init, echo handling,
+│                 non-blocking register polling (RPM, throttle, gear...)
 ├── pit.cpp/.h    Pit mode: WiFi hotspot, embedded web app (lap log, track
 │                 management) and OTA firmware updates
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
@@ -422,6 +468,8 @@ The interesting parts:
 | Wrong track auto-selected | Two stored lines within 5 km of each other: select manually (`T <id>` or the pit-mode web app) |
 | Stuck in WiFi mode after an OTA update | Expected — long-press the GPS page (or `w`) to reboot back into normal mode |
 | Screen suddenly dark | Parking dim (1 min without movement) — press a button or start riding |
+| ECU page stays `---` | Ignition off, K-line not wired (see Step 7), TX/RX swapped, or the bike is CAN-based (check with the multimeter) |
+| Throttle % looks wrong | Calibrate: log the raw values at closed/full throttle and adjust `THROTTLE_RAW_*` in `src/kds_proto.h` |
 
 ---
 

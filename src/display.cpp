@@ -48,7 +48,7 @@ void Display::notify(const char* msg, uint32_t durationMs) {
   notifUntil_ = millis() + durationMs;
 }
 
-void Display::render(Page page, const LapTimer& t, const GpsView& g,
+void Display::render(Page page, const LapTimer& t, const GpsView& g, const EcuData& e,
                      uint32_t now, const char* trackName) {
   u8g2_.clearBuffer();
   bool flashActive = t.lapCount() > 0 && t.timing() &&
@@ -61,12 +61,56 @@ void Display::render(Page page, const LapTimer& t, const GpsView& g,
     switch (page) {
       case Page::Race:    drawRace(t, g, now); break;
       case Page::Session: drawSession(t); break;
+      case Page::Ecu:     drawEcu(e); break;
       case Page::Gps:     drawGps(g); break;
       case Page::Line:    drawLinePage(t, g, trackName); break;
       default: break;
     }
   }
   u8g2_.sendBuffer();
+}
+
+void Display::drawEcu(const EcuData& e) {
+  char b[32];
+  u8g2_.setFont(u8g2_font_6x12_tf);
+  u8g2_.drawStr(0, 10, e.link ? "ECU LINK" : "ECU ---");
+  if (e.coolantC > -100) {
+    snprintf(b, sizeof(b), "%.0fC", e.coolantC);
+    u8g2_.drawStr(128 - u8g2_.getStrWidth(b), 10, b);
+  }
+  if (!e.link) {
+    u8g2_.setFont(u8g2_font_6x10_tf);
+    u8g2_.drawStr(0, 30, "Waiting for the bike:");
+    u8g2_.drawStr(0, 40, "ignition ON, K-line");
+    u8g2_.drawStr(0, 50, "wired (L9637D)");
+    return;
+  }
+
+  // Gear, huge (N when neutral).
+  char g[4];
+  if (e.gear == 0) {
+    strncpy(g, "N", sizeof(g));
+  } else if (e.gear > 0) {
+    snprintf(g, sizeof(g), "%u", (unsigned)e.gear % 10u);
+  } else {
+    strncpy(g, "-", sizeof(g));
+  }
+  u8g2_.setFont(u8g2_font_logisoso28_tr);
+  u8g2_.drawStr(8, 48, g);
+
+  // RPM, right-aligned.
+  u8g2_.setFont(u8g2_font_logisoso16_tr);
+  snprintf(b, sizeof(b), "%d", e.rpm);
+  u8g2_.drawStr(122 - 22 - u8g2_.getStrWidth(b), 42, b);
+  u8g2_.setFont(u8g2_font_6x10_tf);
+  u8g2_.drawStr(104, 42, "rpm");
+
+  // Throttle bar.
+  u8g2_.drawFrame(0, 54, 128, 10);
+  if (e.throttlePct >= 0) {
+    int w = (int)(124.0f * e.throttlePct / 100.0f);
+    if (w > 0) u8g2_.drawBox(2, 56, w, 6);
+  }
 }
 
 void Display::drawNotify() {

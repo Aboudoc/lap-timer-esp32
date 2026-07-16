@@ -51,6 +51,23 @@ constexpr float TRACK_MATCH_KM = 5.0f;   // auto-select the stored track within 
 // download the lap log, manage tracks and flash firmware updates (OTA).
 constexpr char PIT_WIFI_PASS[] = "laptimer";  // WPA2 password of the hotspot (8+ chars)
 
+// ============ ECU bridge (Kawasaki KDS, K-line) ============
+// Reads RPM, throttle, gear, coolant temp and speed from the bike's
+// diagnostic plug through an L9637D transceiver, shows them on the ECU page
+// and streams them to RaceChrono as CAN channels. Harmless when nothing is
+// wired (retries quietly); set to 0 to remove entirely.
+#define ENABLE_KDS 1
+constexpr int      PIN_KDS_RX          = 26;    // <- L9637D RX (10k pull-up to 3V3)
+constexpr int      PIN_KDS_TX          = 27;    // -> L9637D TX
+constexpr uint32_t KDS_BAUD            = 10400;
+constexpr uint32_t KDS_INTERBYTE_MS    = 10;    // pacing between request bytes
+constexpr uint32_t KDS_POLL_GAP_MS     = 40;    // gap between requests
+constexpr uint32_t KDS_TIMEOUT_MS      = 300;   // response timeout
+constexpr uint32_t KDS_START_TIMEOUT_MS = 600;  // init response timeout
+constexpr uint32_t KDS_RETRY_MS        = 5000;  // re-init backoff
+constexpr uint32_t ECU_CAN_ID          = 0x100; // fabricated CAN id for RaceChrono
+constexpr uint32_t ECU_CAN_PERIOD_MS   = 250;   // stream rate to RaceChrono
+
 // ================= Screen dimming =================
 constexpr uint32_t DIM_AFTER_MS  = 60000;  // dim after 1 min without movement or button
 constexpr float    DIM_SPEED_KMH = 5.0f;   // "movement" threshold
