@@ -52,22 +52,26 @@ font-weight:600;margin:2px 2px 8px}
 .pill{background:var(--card);border:1px solid var(--line);border-radius:99px;
 padding:6px 13px;font-size:13px;color:var(--mut)}
 .pill b{color:var(--txt)}
-.hero{position:relative;text-align:center;padding:22px 16px 18px;overflow:hidden}
-.hero .lbl{font-size:11px;letter-spacing:2px;color:var(--mut);text-transform:uppercase}
-.hero .val{font-size:64px;font-weight:800;font-style:italic;letter-spacing:-2px;
-line-height:1.1;padding-right:6px}
+.hero{position:relative;text-align:center;padding:30px 12px 24px;overflow:hidden}
+.hero .lbl{font-size:12px;letter-spacing:2.5px;color:var(--mut);text-transform:uppercase}
+.hero .val{font-size:clamp(60px,23vw,92px);font-weight:800;font-style:italic;
+letter-spacing:-3px;line-height:1.05;padding-right:8px}
+.hero .sub{font-size:21px;font-weight:700;color:var(--mut);margin-top:6px;
+font-style:italic}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;
 padding:9px 2px;text-align:center;min-width:0}
-.stat b{display:block;font-size:13.5px;font-weight:700;white-space:nowrap}
+.stat{padding:12px 2px}
+.stat b{display:block;font-size:16px;font-weight:700;white-space:nowrap}
 .stat span{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px}
 .stat.pb b{color:var(--pur)}
-.tele{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
-.t{background:var(--card);border:1px solid var(--line);border-radius:14px;
-padding:10px 4px;text-align:center;min-width:0}
-.t b{display:block;font-size:17px;font-weight:700;white-space:nowrap}
-.t small{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:1px}
-.t .u{font-size:11px;color:var(--mut);font-weight:400}
+.tele{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.t{background:var(--card);border:1px solid var(--line);border-radius:16px;
+padding:18px 6px;text-align:center;min-width:0}
+.t b{display:block;font-size:30px;font-weight:800;font-style:italic;
+white-space:nowrap;letter-spacing:-1px}
+.t small{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:1.6px}
+.t .u{font-size:13px;color:var(--mut);font-weight:400;font-style:normal}
 /* lap flash overlay */
 #flash{position:fixed;inset:0;z-index:99;display:none;flex-direction:column;
 justify-content:center;align-items:center;background:rgba(10,10,12,.94);
@@ -128,13 +132,28 @@ nav button.on::before{content:"";position:absolute;top:0;left:30%;right:30%;
 height:2px;border-radius:2px;background:var(--grn)}
 .muted{color:var(--mut);font-size:14px;text-align:center;padding:26px 10px}
 svg.ch{width:100%;height:auto;display:block;margin:8px 0 2px}
+/* racing draw-in animations */
+.ch .ln{stroke-dasharray:1;stroke-dashoffset:1;
+animation:draw 1.4s cubic-bezier(.7,0,.3,1) .15s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.ch .ar{opacity:0;animation:fin .6s ease 1.15s forwards}
+.ch .bl,.ch .tx{opacity:0;animation:fin .45s ease 1.35s forwards}
+.ch .bd{opacity:0;transform-box:fill-box;transform-origin:center;
+animation:pop .4s cubic-bezier(.34,1.56,.64,1) 1.5s forwards}
+@keyframes fin{to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+.anim{opacity:0;animation:slidein .38s ease forwards}
+@keyframes slidein{from{opacity:0;transform:translateX(-10px)}
+to{opacity:1;transform:none}}
+.spark{opacity:.85}
 </style></head><body>
 <header><h1>LAP TIMER</h1><small id="ver"></small><div id="dot"></div></header>
 <main>
 <section id="p-live">
  <div class="pills" id="lhead"></div>
  <div class="card hero"><div class="lbl" id="hlbl">CURRENT LAP</div>
-  <div class="val num" id="hval">-:--.-</div></div>
+  <div class="val num" id="hval">-:--.-</div>
+  <div class="sub num" id="hsub"></div></div>
  <div class="stats" id="lrow"></div>
  <div class="tele" id="ltele"></div>
 </section>
@@ -227,11 +246,13 @@ $("#lhead").innerHTML=pill("SESSION",st.session)+pill("LAP",st.laps)+
 `<div class="pill"><b>${st.track}</b></div>`+
 pill("GPS",st.fix?st.sats+" sat":"&#9888;");
 const cur=st.timing?st.current+(Date.now()-stAt):0;
-const hv=$("#hval"),hl=$("#hlbl");
+const hv=$("#hval"),hl=$("#hlbl"),hs=$("#hsub");
 if(st.hasDelta){hl.textContent="DELTA vs BEST";hv.textContent=fdelta(st.delta);
-hv.style.color=st.delta<0?"var(--grn)":"var(--red)";}
+hv.style.color=st.delta<0?"var(--grn)":"var(--red)";
+hs.textContent=st.timing?"LAP  "+fmt(cur,false):"";}
 else{hl.textContent=st.timing?"CURRENT LAP":"WAITING FOR A LAP";
-hv.textContent=st.timing?fmt(cur,false):"-:--.-";hv.style.color="var(--txt)";}
+hv.textContent=st.timing?fmt(cur,false):"-:--.-";hv.style.color="var(--txt)";
+hs.textContent=st.laps>0?"LAST  "+fmt(st.last,true):"";}
 $("#lrow").innerHTML=
 `<div class="stat"><b class="num">${st.timing?fmt(cur,false):"-"}</b><span>current</span></div>
 <div class="stat"><b class="num">${fmt(st.last,true)}</b><span>last</span></div>
@@ -246,7 +267,7 @@ if(st.ecu){t+=tele("RPM",st.rpm,"");t+=tele("Engine",st.coolant,"&deg;C",
 st.coolant>102?"var(--red)":null);}
 $("#ltele").innerHTML=t;}
 setInterval(poll,1000);poll();
-setInterval(()=>{if(st&&st.timing&&!st.hasDelta)renderLive()},100);
+setInterval(()=>{if(st&&st.timing)renderLive()},100);
 
 /* ---- sessions ---- */
 let sessions=[];
@@ -262,12 +283,21 @@ tf:+r[8]||0,tr:+r[9]||0});}
 sessions=Object.values(g).reverse();
 $("#sdetail").innerHTML="";
 $("#slist").innerHTML=sessions.length?sessions.map((s,i)=>{
-const best=Math.min(...s.laps.map(l=>l.t));
-return `<div class="card sess" onclick="showSess(${i})"><div class="bar"></div>
+const ts=s.laps.map(l=>l.t),best=Math.min(...ts);
+return `<div class="card sess anim" style="animation-delay:${i*60}ms"
+onclick="showSess(${i})"><div class="bar"></div>
 <div class="inf"><b>${s.track} &middot; S${s.sess}</b>
 <small>${s.date} &middot; ${s.laps.length} laps</small></div>
+${ts.length>1?spark(ts):""}
 <div class="bst"><b class="num">${fmt(best,true)}</b><small>best</small></div></div>`
 }).join(""):'<p class="muted">No laps yet.<br>Go ride &#127937;</p>';}
+function spark(vals){const w=64,h=26,p=3;
+const mn=Math.min(...vals),mx=Math.max(...vals),sp=Math.max(1,mx-mn);
+const sx=i=>p+i*(w-2*p)/Math.max(1,vals.length-1);
+const sy=v=>p+(v-mn)*(h-2*p)/sp;
+return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+<path d="${vals.map((v,i)=>(i?"L":"M")+sx(i).toFixed(1)+" "+sy(v).toFixed(1)).join(" ")}"
+fill="none" stroke="#00e676" stroke-width="1.5" stroke-linecap="round"/></svg>`}
 function chartSvg(vals){const w=340,h=150,pl=38,pr=12,pt=14,pb=22;
 const mn=Math.min(...vals),mx=Math.max(...vals),sp=Math.max(200,mx-mn);
 const sx=i=>pl+i*(w-pl-pr)/Math.max(1,vals.length-1);
@@ -279,15 +309,15 @@ return `<svg class="ch" viewBox="0 0 ${w} ${h}">
 <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0" stop-color="#00e676" stop-opacity=".28"/>
 <stop offset="1" stop-color="#00e676" stop-opacity="0"/></linearGradient></defs>
-<line x1="${pl}" y1="${sy(mn)}" x2="${w-pr}" y2="${sy(mn)}" stroke="#bf5af2"
- stroke-dasharray="3 4" stroke-width="1"/>
-<path d="${area}" fill="url(#g)"/>
-<path d="${line}" fill="none" stroke="#00e676" stroke-width="2.5"
- stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="${sx(bi)}" cy="${sy(mn)}" r="4.5" fill="#bf5af2"/>
-<text x="${pl-6}" y="${sy(mn)+4}" fill="#bf5af2" font-size="10"
+<path class="ar" d="${area}" fill="url(#g)"/>
+<line class="bl" x1="${pl}" y1="${sy(mn)}" x2="${w-pr}" y2="${sy(mn)}"
+ stroke="#bf5af2" stroke-dasharray="3 4" stroke-width="1"/>
+<path class="ln" pathLength="1" d="${line}" fill="none" stroke="#00e676"
+ stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle class="bd" cx="${sx(bi)}" cy="${sy(mn)}" r="4.5" fill="#bf5af2"/>
+<text class="tx" x="${pl-6}" y="${sy(mn)+4}" fill="#bf5af2" font-size="10"
  text-anchor="end">${fmt(mn,false)}</text>
-<text x="${pl-6}" y="${sy(mx)+4}" fill="#8e8e93" font-size="10"
+<text class="tx" x="${pl-6}" y="${sy(mx)+4}" fill="#8e8e93" font-size="10"
  text-anchor="end">${fmt(mx,false)}</text>
 <text x="${pl}" y="${h-8}" fill="#8e8e93" font-size="10">lap 1</text>
 <text x="${w-pr}" y="${h-8}" fill="#8e8e93" font-size="10"
@@ -308,8 +338,9 @@ $("#sdetail").innerHTML=`
 <div class="card"><h2>Lap times</h2>${s.laps.length>1?chartSvg(ts):'<p class="muted">One lap</p>'}</div>
 <div class="card"><h2>Laps</h2><table>
 <tr><th>Lap</th><th>Time</th><th>&Delta;</th><th>km/h</th><th>Lean</th><th>F&deg;</th><th>R&deg;</th></tr>
-${s.laps.map(l=>{const d=l.t-best;
-return `<tr class="${l.t==best?"best":""}"><td>${l.n}</td>
+${s.laps.map((l,ri)=>{const d=l.t-best;
+return `<tr class="anim ${l.t==best?"best":""}"
+ style="animation-delay:${150+ri*45}ms"><td>${l.n}</td>
 <td class="num">${fmt(l.t,true)}</td>
 <td class="num ${d?"dn":"up"}">${d?"+"+ (d/1000).toFixed(2):"&#9733;"}</td>
 <td class="num">${l.v.toFixed(0)}</td><td class="num">${l.lean?l.lean.toFixed(0):"-"}</td>
