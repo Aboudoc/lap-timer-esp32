@@ -29,7 +29,7 @@ const char WEBAPP_HTML[] PROGMEM = R"HTML(<!DOCTYPE html><html><head>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{background:var(--bg)}
 body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);
-color:var(--txt);padding-bottom:86px;min-height:100vh}
+color:var(--txt);padding-bottom:86px;min-height:100vh;overflow-x:hidden}
 /* header */
 header{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:10px;
 padding:14px 16px 10px;background:rgba(10,10,12,.86);backdrop-filter:blur(12px);
@@ -56,16 +56,16 @@ padding:6px 13px;font-size:13px;color:var(--mut)}
 .hero .lbl{font-size:11px;letter-spacing:2px;color:var(--mut);text-transform:uppercase}
 .hero .val{font-size:64px;font-weight:800;font-style:italic;letter-spacing:-2px;
 line-height:1.1;padding-right:6px}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;
-padding:10px 4px;text-align:center}
-.stat b{display:block;font-size:16px;font-weight:700}
-.stat span{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px}
+padding:9px 2px;text-align:center;min-width:0}
+.stat b{display:block;font-size:13.5px;font-weight:700;white-space:nowrap}
+.stat span{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px}
 .stat.pb b{color:var(--pur)}
-.tele{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.tele{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
 .t{background:var(--card);border:1px solid var(--line);border-radius:14px;
-padding:10px;text-align:center}
-.t b{display:block;font-size:20px;font-weight:700}
+padding:10px 4px;text-align:center;min-width:0}
+.t b{display:block;font-size:17px;font-weight:700;white-space:nowrap}
 .t small{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:1px}
 .t .u{font-size:11px;color:var(--mut);font-weight:400}
 /* lap flash overlay */
@@ -80,8 +80,9 @@ backdrop-filter:blur(6px)}
 /* sessions */
 .sess{display:flex;align-items:center;gap:12px;cursor:pointer}
 .sess .bar{width:4px;align-self:stretch;border-radius:4px;background:var(--grn)}
-.sess .inf{flex:1}
-.sess .inf b{font-size:16px}
+.sess .inf{flex:1;min-width:0}
+.sess .inf b{font-size:16px;white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis;display:block}
 .sess .inf small{color:var(--mut);display:block;margin-top:2px}
 .sess .bst{text-align:right}
 .sess .bst b{font-size:18px;color:var(--grn)}
@@ -102,9 +103,9 @@ td.up{color:var(--grn)}td.dn{color:var(--red)}
 background:var(--grn);border-radius:99px;padding:3px 9px}
 .trk .bst{color:var(--pur);font-weight:700}
 input{background:#0f0f12;border:1px solid var(--line);color:var(--txt);
-border-radius:11px;padding:10px;font-size:15px;width:140px}
+border-radius:11px;padding:10px;font-size:15px;width:120px;max-width:38vw}
 button.b{background:#2a2a30;color:var(--txt);border:1px solid var(--line);
-border-radius:11px;padding:10px 14px;font-size:14px;font-weight:600;margin:4px 6px 0 0}
+border-radius:11px;padding:10px 12px;font-size:14px;font-weight:600;margin:4px 5px 0 0}
 button.go{background:var(--grn);color:#003b1d;border:none}
 button.warn{background:none;color:var(--red);border:1px solid var(--red)}
 /* system list */
