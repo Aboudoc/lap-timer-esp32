@@ -16,14 +16,18 @@
 #include "display.h"
 #include "storage.h"
 #include "button.h"
+#include "ble_racechrono.h"
 
-static const char* VERSION = "v1.0";
+static const char* VERSION = "v1.1";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
 Display   display;
 Storage   storage;
 Button    btnBoot, btnExt;
+#if ENABLE_BLE_RACECHRONO
+BleRaceChrono ble;
+#endif
 
 Page     page = Page::Race;
 uint32_t bestEver = 0;
@@ -67,11 +71,16 @@ void simLoop() {
   simFix.lon = SIM_LON0 + (SIM_R * sin(simTheta)) / (111194.9 * cos(SIM_LAT0 * DEG_TO_RAD));
   simFix.speedKmh  = v * 3.6f;
   simFix.courseDeg = fmodf(90.0f + simTheta * (float)RAD_TO_DEG, 360.0f);
+  simFix.altM      = 5.0f;
+  simFix.altValid  = true;
   simFix.msOfDay   = now % MS_PER_DAY;
   simFix.localMs   = now;
   simFix.valid     = true;
 
   if (lapTimer.onFix(simFix)) handleLapDone();
+#if ENABLE_BLE_RACECHRONO
+  ble.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
+#endif
 }
 #endif
 // ==========================================================
@@ -115,7 +124,9 @@ void setup() {
   setCpuFrequencyMhz(80);  // no need for more -> saves battery
   Serial.begin(SERIAL_BAUD);
   WiFi.mode(WIFI_OFF);
+#if !ENABLE_BLE_RACECHRONO
   btStop();
+#endif
 
   display.begin();
   display.splash(VERSION);
@@ -138,6 +149,10 @@ void setup() {
   gpsMod.begin(Serial2);
 #endif
 
+#if ENABLE_BLE_RACECHRONO
+  ble.begin(BLE_DEVICE_NAME);
+#endif
+
   Serial.println("Lap timer ready. Type 'h' for help.");
 }
 
@@ -149,6 +164,11 @@ void loop() {
 #else
   if (gpsMod.update()) {
     if (lapTimer.onFix(gpsMod.fix())) handleLapDone();
+#if ENABLE_BLE_RACECHRONO
+    int y = 0, mo = 0, dd = 0;
+    gpsMod.dateYmd(y, mo, dd);
+    ble.onFix(gpsMod.fix(), gpsMod.sats(), gpsMod.hdop(), gpsMod.hasFix(), y, mo, dd);
+#endif
   }
 #endif
 
@@ -169,6 +189,9 @@ void loop() {
   if (now - lastRenderMs >= DISPLAY_PERIOD_MS) {
     lastRenderMs = now;
     GpsView gv = buildGpsView();
+#if ENABLE_BLE_RACECHRONO
+    gv.ble = ble.connected();
+#endif
     display.render(page, lapTimer, gv, now, bestEver);
   }
 }

@@ -138,6 +138,8 @@ bool GpsModule::update() {
     fix_.lon       = gps_.location.lng();
     fix_.speedKmh  = gps_.speed.isValid() ? (float)gps_.speed.kmph() : 0.0f;
     fix_.courseDeg = gps_.course.isValid() ? (float)gps_.course.deg() : 0.0f;
+    fix_.altValid  = gps_.altitude.isValid();
+    fix_.altM      = fix_.altValid ? (float)gps_.altitude.meters() : 0.0f;
     fix_.msOfDay   = mod;
     fix_.localMs   = now;
     fix_.valid     = gps_.location.isValid();
@@ -173,6 +175,14 @@ float GpsModule::lastSpeedKmh() {
 
 uint32_t GpsModule::fixAgeMs() {
   return gps_.location.age();
+}
+
+bool GpsModule::dateYmd(int& y, int& m, int& d) {
+  if (!gps_.date.isValid()) return false;
+  y = gps_.date.year();
+  m = gps_.date.month();
+  d = gps_.date.day();
+  return true;
 }
 
 void GpsModule::dateStr(char* out, size_t n) {

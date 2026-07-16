@@ -5,10 +5,14 @@ Ninja 400 at MSP Bangkok). Tank-mounted via Quad Lock, it automatically detects
 every pass over the start/finish line and shows:
 
 - the **current lap time** in big digits,
+- a **live predictive delta** vs your best lap, updated as you ride
+  (`-0.42` = you are currently faster than your best lap),
 - on every completed lap: the **lap time** full-screen for 4 s with the
   **delta vs your best lap** (`-0.32 vs best`),
 - last lap, best lap, speed, lap count,
-- and it **logs every lap to a CSV file** in its internal flash (retrievable over USB).
+- it **logs every lap to a CSV file** in its internal flash (retrievable over USB),
+- and it can **stream the GPS to the RaceChrono app** over Bluetooth LE
+  ("RaceChrono DIY" protocol) for full session analysis on your phone.
 
 The start line is set once, while riding, with a single button press — then it
 is remembered for every future session. Real-world precision: ~0.1-0.3 s
@@ -74,6 +78,13 @@ makes the precision much better than "one fix every 0.2 s".
 
 Built-in guards: 30 s minimum lap time, 15 km/h minimum speed, wrong-direction
 crossings ignored → no false laps in the pits or while stopped on the grid.
+
+**Predictive delta:** while you ride, the firmware records a distance → time
+trace of the lap. Whenever a lap becomes your session best, its trace becomes
+the reference. From then on, your progress is compared against the reference
+*at the same distance along the lap*, five times per second — the bottom-left
+of the RACE page shows `-0.42` (you're up) or `+0.87` (you're down), inverted
+video when you're gaining. Available from lap 2 onwards.
 
 ---
 
@@ -205,10 +216,13 @@ with the battery connected is fine, no conflict.
 
 | Page | Content | Long press |
 |---|---|---|
-| **RACE** | current lap (big), speed, sats, Last/Best | — |
+| **RACE** | current lap (big), speed, sats, live delta + Best (or Last/Best) | — |
 | **SESSION** | recent laps (best marked `*`), session vmax | reset session |
 | **GPS** | fix, satellites, HDOP, rate Hz, position | — |
 | **LINE** | line status and distance | set the line here |
+
+On the RACE top bar, `B` in front of the satellite count means a RaceChrono
+client is connected.
 
 While the timer is running, the display auto-returns to RACE after 15 s. Long
 presses are disabled on RACE and GPS to prevent accidental actions while
@@ -234,9 +248,23 @@ riding.
 | `MIN_LAP_MS` | 30 s | minimum lap time (double-detection guard) |
 | `MIN_CROSS_SPEED_KMH` | 15 km/h | minimum speed for a valid crossing |
 | `GPS_MEAS_RATE_MS` | 200 ms | GPS rate (5 Hz = NEO-6M maximum) |
+| `ENABLE_BLE_RACECHRONO` | 1 | RaceChrono BLE streaming (0 = off, saves ~10-15 mA) |
+| `BLE_DEVICE_NAME` | LapTimer ESP32 | name shown in the RaceChrono app |
 | `PIN_*` | — | full pinout |
 
 Display mounted upside down? Change `U8G2_R0` to `U8G2_R2` in `src/display.h`.
+
+### RaceChrono over Bluetooth (optional)
+
+The device advertises itself as a **RaceChrono DIY** GPS receiver. In the
+[RaceChrono](https://racechrono.com/) app: **Settings → Add other device →
+RaceChrono DIY → "LapTimer ESP32"**, then use it as the GPS receiver for your
+sessions — you get lap analysis, sectors and traces on your phone, recorded in
+parallel with the on-board timer. The phone can stay in your pocket or in the
+pits (leave RaceChrono recording).
+
+It also works in **simulation mode**: flash `esp32dev-sim` and RaceChrono
+receives the virtual laps — handy to learn the app from your couch.
 
 ---
 
@@ -251,7 +279,10 @@ src/
 │                 configuration (5 Hz, useless sentences disabled), clean
 │                 "fix" snapshots via TinyGPS++
 ├── laptimer.cpp/.h  The algorithm: gate-crossing geometry, exact-time
-│                 interpolation, laps/best/deltas
+│                 interpolation, laps/best/deltas, and the distance-matched
+│                 predictive delta (lap traces + reference lap)
+├── ble_racechrono.cpp/.h  "RaceChrono DIY" BLE device (NimBLE): streams the
+│                 5 Hz GPS to the RaceChrono app
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
 ├── storage.cpp/.h   Persistence: line + best in NVS, CSV log in LittleFS
 │                 (internal flash)
@@ -287,18 +318,22 @@ The interesting parts:
 | GPS page shows ~1.0Hz | The 5 Hz configuration didn't get through: check the RX wire (GPIO17 → GPS RX), reboot outdoors |
 | Random reboots on battery | MT3608 badly adjusted or battery empty — measure the voltage on VIN |
 | Laps not detected | Line set at the wrong spot/heading (set it again), or laps < 30 s (`MIN_LAP_MS`) |
+| Not visible in RaceChrono | `ENABLE_BLE_RACECHRONO` set to 0, or another phone is already connected (one client at a time) |
+| No delta on the RACE page | Normal on lap 1 — the delta needs a completed reference lap (from lap 2) |
 
 ---
 
-## 7. Possible upgrades (v2)
+## 7. Possible upgrades
+
+Already built in: live predictive delta, RaceChrono BLE streaming. Still on
+the table (need hardware):
 
 - u-blox **M8N/M10** GPS (10-25 Hz, multi-constellation): drop-in replacement,
   same wiring, same code → noticeably better precision (~200-400 ฿).
-- **BLE streaming to RaceChrono** ("RaceChrono DIY" protocol): professional
-  session analysis on your phone, sectors, traces.
-- Real-time **predictive delta** (continuous comparison against your best lap).
 - **2.42" SSD1309 OLED**: same library, a one-line change.
 - Battery gauge (2×100 kΩ voltage divider into an ADC pin).
+- Persist the reference lap across power cycles (predictive delta available
+  from lap 1 of the next session).
 
 ---
 

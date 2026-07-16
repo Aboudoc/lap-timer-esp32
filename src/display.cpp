@@ -103,7 +103,7 @@ void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
   snprintf(b, sizeof(b), "%3.0f km/h", g.speedKmh);
   drawCentered(b, 10);
   if (g.hasFix) {
-    snprintf(b, sizeof(b), "S%d", g.sats);
+    snprintf(b, sizeof(b), "%sS%d", g.ble ? "B " : "", g.sats);
     u8g2_.drawStr(128 - u8g2_.getStrWidth(b), 10, b);
   } else if ((now / 400) % 2) {
     u8g2_.drawStr(128 - u8g2_.getStrWidth("GPS!"), 10, "GPS!");
@@ -118,9 +118,25 @@ void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
   }
   drawCentered(b, 44);
 
-  // Bottom line: last / best, or a contextual hint.
+  // Bottom line: live predictive delta once a reference lap exists,
+  // otherwise last / best, otherwise a contextual hint.
   u8g2_.setFont(u8g2_font_6x12_tf);
-  if (t.lapCount() > 0) {
+  if (t.hasPredDelta()) {
+    char d[12], m[12];
+    fmtDelta(d, sizeof(d), t.predDeltaMs());
+    fmtLapTime(m, sizeof(m), t.bestLapMs(), true);
+    if (t.predDeltaMs() < 0) {
+      // Gaining on the best lap: inverted patch, readable at a glance.
+      u8g2_.drawBox(0, 52, u8g2_.getStrWidth(d) + 5, 12);
+      u8g2_.setDrawColor(0);
+      u8g2_.drawStr(2, 62, d);
+      u8g2_.setDrawColor(1);
+    } else {
+      u8g2_.drawStr(2, 62, d);
+    }
+    snprintf(b, sizeof(b), "B%s", m);
+    u8g2_.drawStr(128 - u8g2_.getStrWidth(b), 63, b);
+  } else if (t.lapCount() > 0) {
     char l[12], m[12];
     fmtLapTime(l, sizeof(l), t.lastLapMs(), true);
     fmtLapTime(m, sizeof(m), t.bestLapMs(), true);

@@ -38,6 +38,54 @@ void LapTimer::resetSession() {
   sessMaxSpeed_ = 0;
   hasPrev_ = false;
   distToLine_ = NAN;
+  cur_.n = 0;
+  ref_.n = 0;
+  curDist_ = 0;
+  refWalk_ = 0;
+  predDelta_ = 0;
+  predValid_ = false;
+}
+
+void LapTimer::traceAppend(float d, uint32_t ms) {
+  if (cur_.n < TRACE_MAX_SAMPLES) {
+    cur_.dist[cur_.n] = d;
+    cur_.tMs[cur_.n] = ms;
+    cur_.n++;
+  }
+}
+
+// Starts the trace of a new lap. The lap begins on the line, so the first
+// stored point is (0, 0); the fix that revealed the crossing already sits a
+// partial segment past the line.
+void LapTimer::traceRestart(float initialDist, uint32_t initialElapsed) {
+  cur_.n = 0;
+  traceAppend(0.0f, 0);
+  curDist_ = initialDist;
+  traceAppend(curDist_, initialElapsed);
+  refWalk_ = 0;
+}
+
+// The lap that just finished is the new session best: it becomes the
+// reference for the predictive delta.
+void LapTimer::adoptReference() {
+  memcpy(ref_.dist, cur_.dist, cur_.n * sizeof(float));
+  memcpy(ref_.tMs, cur_.tMs, cur_.n * sizeof(uint32_t));
+  ref_.n = cur_.n;
+}
+
+// Elapsed time of the reference lap at distance d, linearly interpolated.
+// refWalk_ only moves forward: O(1) amortized per fix.
+uint32_t LapTimer::refTimeAtDist(float d) {
+  if (ref_.n == 0) return 0;
+  while (refWalk_ + 1 < ref_.n && ref_.dist[refWalk_ + 1] < d) refWalk_++;
+  if (refWalk_ + 1 >= ref_.n) return ref_.tMs[ref_.n - 1];
+  float d0 = ref_.dist[refWalk_], d1 = ref_.dist[refWalk_ + 1];
+  uint32_t t0 = ref_.tMs[refWalk_], t1 = ref_.tMs[refWalk_ + 1];
+  if (d1 <= d0) return t0;
+  float f = (d - d0) / (d1 - d0);
+  if (f < 0.0f) f = 0.0f;
+  if (f > 1.0f) f = 1.0f;
+  return t0 + (uint32_t)(f * (float)(t1 - t0));
 }
 
 // Local coordinates in meters, centered on the line (x = east, y = north).
@@ -80,10 +128,19 @@ bool LapTimer::onFix(const GpsFix& fix) {
   if (!fix.valid) return false;
   bool lapDone = false;
 
+  // Local position and length of the segment since the previous fix.
+  float segLen = 0;
+  bool haveSeg = false;
   if (line_.isSet) {
     float x, y;
     toLocal(fix.lat, fix.lon, x, y);
     distToLine_ = sqrtf(x * x + y * y);
+    if (hasPrev_) {
+      float px, py;
+      toLocal(prev_.lat, prev_.lon, px, py);
+      segLen = sqrtf((x - px) * (x - px) + (y - py) * (y - py));
+      haveSeg = true;
+    }
   }
 
   if (timing_) {
@@ -107,9 +164,11 @@ bool LapTimer::onFix(const GpsFix& fix) {
       lastCrossMsOfDay_ = crossMsOfDay;
       lastCrossLocalMs_ = crossLocalMs;
       curMaxSpeed_ = fix.speedKmh;
+      traceRestart(segLen * (1.0f - t), dayDiff(fix.msOfDay, crossMsOfDay));
     } else {
       uint32_t lapMs = dayDiff(crossMsOfDay, lastCrossMsOfDay_);
       if (lapMs >= MIN_LAP_MS) {
+        traceAppend(curDist_ + segLen * t, lapMs);  // close the trace exactly on the line
         if (lapCount_ < MAX_LAPS) {
           laps_[lapCount_].ms = lapMs;
           laps_[lapCount_].maxSpeedKmh = curMaxSpeed_;
@@ -117,17 +176,36 @@ bool LapTimer::onFix(const GpsFix& fix) {
         lastLapMs_ = lapMs;
         lastLapMaxSpeed_ = curMaxSpeed_;
         lastDeltaBest_ = (bestMs_ > 0) ? (int32_t)lapMs - (int32_t)bestMs_ : 0;
-        if (bestMs_ == 0 || lapMs < bestMs_) {
+        bool newBest = (bestMs_ == 0 || lapMs < bestMs_);
+        if (newBest) {
           bestMs_ = lapMs;
           bestIdx_ = lapCount_;
+          adoptReference();
         }
         lapCount_++;
         lastCrossMsOfDay_ = crossMsOfDay;
         lastCrossLocalMs_ = crossLocalMs;
         curMaxSpeed_ = fix.speedKmh;
+        traceRestart(segLen * (1.0f - t), dayDiff(fix.msOfDay, crossMsOfDay));
         lapDone = true;
+      } else if (haveSeg) {
+        // Debounced crossing: ignored, but the distance still counts.
+        curDist_ += segLen;
+        traceAppend(curDist_, dayDiff(fix.msOfDay, lastCrossMsOfDay_));
       }
     }
+  } else if (timing_ && haveSeg) {
+    curDist_ += segLen;
+    traceAppend(curDist_, dayDiff(fix.msOfDay, lastCrossMsOfDay_));
+  }
+
+  // Live delta vs the reference lap, compared at equal distance.
+  if (timing_ && ref_.n >= 2) {
+    predDelta_ = (int32_t)dayDiff(fix.msOfDay, lastCrossMsOfDay_) -
+                 (int32_t)refTimeAtDist(curDist_);
+    predValid_ = true;
+  } else {
+    predValid_ = false;
   }
 
   prev_ = fix;

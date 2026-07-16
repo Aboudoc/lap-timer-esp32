@@ -17,6 +17,7 @@ struct GpsView {
   float    speedKmh = 0;
   uint32_t fixAgeMs = 0;
   bool     sim = false;
+  bool     ble = false;  // a RaceChrono client is connected
 };
 
 class Display {

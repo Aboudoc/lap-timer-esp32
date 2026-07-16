@@ -8,6 +8,8 @@ struct GpsFix {
   double   lat = 0, lon = 0;
   float    speedKmh  = 0;
   float    courseDeg = 0;      // course over ground (0 = north, 90 = east)
+  float    altM      = 0;      // altitude above sea level, meters
+  bool     altValid  = false;
   uint32_t msOfDay   = 0;      // GPS time (UTC) in ms since midnight
   uint32_t localMs   = 0;      // millis() when received
   bool     valid     = false;
@@ -27,6 +29,7 @@ class GpsModule {
   float    lastSpeedKmh();
   uint32_t fixAgeMs();
   void     dateStr(char* out, size_t n);  // "2026-07-20" (UTC)
+  bool     dateYmd(int& y, int& m, int& d);
   uint32_t baud() const { return baud_; }
   float    measuredRateHz() const { return rateHz_; }
 
