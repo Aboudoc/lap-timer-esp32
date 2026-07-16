@@ -68,6 +68,16 @@ constexpr uint32_t KDS_RETRY_MS        = 5000;  // re-init backoff
 constexpr uint32_t ECU_CAN_ID          = 0x100; // fabricated CAN id for RaceChrono
 constexpr uint32_t ECU_CAN_PERIOD_MS   = 250;   // stream rate to RaceChrono
 
+// ============ IMU (MPU6050): lean angle & G-forces ============
+// GY-521 board on the same I2C bus as the OLED, mounted flat, X axis facing
+// forward. Harmless when absent (probes quietly); set to 0 to remove.
+#define ENABLE_IMU 1
+constexpr uint8_t  IMU_I2C_ADDR          = 0x68;
+constexpr float    IMU_KIN_TAU_S         = 3.0f;   // kinematic correction time constant
+constexpr float    IMU_KIN_MIN_SPEED_KMH = 30.0f;  // below: correct with gravity instead
+constexpr uint32_t IMU_PROBE_MS          = 5000;   // re-probe period when absent
+constexpr uint32_t IMU_CAN_ID            = 0x101;  // fabricated CAN id for RaceChrono
+
 // ================= Screen dimming =================
 constexpr uint32_t DIM_AFTER_MS  = 60000;  // dim after 1 min without movement or button
 constexpr float    DIM_SPEED_KMH = 5.0f;   // "movement" threshold

@@ -3,7 +3,7 @@
 #include <math.h>
 
 static const char* kCsvPath = "/laps.csv";
-static const char* kCsvHeader = "date,time_utc,track,session,lap,time_s,vmax_kmh";
+static const char* kCsvHeader = "date,time_utc,track,session,lap,time_s,vmax_kmh,lean_max_deg";
 
 // On-flash track file layout: header then dist[traceN] then tMs[traceN].
 struct TrackFileHeader {
@@ -211,17 +211,18 @@ int Storage::nearestTrack(double lat, double lon, float maxKm) {
 }
 
 void Storage::appendLap(const char* dateStr, uint32_t crossMsOfDay, const char* track,
-                        int session, int lapIdx, uint32_t lapMs, float maxKmh) {
+                        int session, int lapIdx, uint32_t lapMs, float maxKmh,
+                        float leanMaxDeg) {
   File f = LittleFS.open(kCsvPath, FILE_APPEND);
   if (!f) return;
   if (f.size() == 0) f.println(kCsvHeader);
   unsigned long sec = crossMsOfDay / 1000UL;
-  f.printf("%s,%02lu:%02lu:%02lu.%03lu,%s,%d,%d,%lu.%03lu,%.1f\n",
+  f.printf("%s,%02lu:%02lu:%02lu.%03lu,%s,%d,%d,%lu.%03lu,%.1f,%.0f\n",
            dateStr, sec / 3600UL, (sec / 60UL) % 60UL, sec % 60UL,
            (unsigned long)(crossMsOfDay % 1000UL),
            track, session, lapIdx,
            (unsigned long)(lapMs / 1000UL), (unsigned long)(lapMs % 1000UL),
-           maxKmh);
+           maxKmh, leanMaxDeg);
   f.close();
 }
 
@@ -249,3 +250,11 @@ void Storage::clearCsv() {
 
 bool Storage::pitFlag() { return prefs_.getBool("pit", false); }
 void Storage::setPitFlag(bool on) { prefs_.putBool("pit", on); }
+
+bool Storage::loadImuCal(float out[5]) {
+  return prefs_.getBytes("imucal", out, 5 * sizeof(float)) == 5 * sizeof(float);
+}
+
+void Storage::saveImuCal(const float in[5]) {
+  prefs_.putBytes("imucal", in, 5 * sizeof(float));
+}

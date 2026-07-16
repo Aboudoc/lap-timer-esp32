@@ -47,6 +47,14 @@ stored track within 5 km is loaded automatically — arrive at MSP, turn the
 device on, it says `TRACK MSP` and your records are armed. Rename, select or
 delete tracks from the pit-mode web app or the serial console (`T`, `N`).
 
+### 6c. Lean angle & G-forces (MPU6050)
+A 50 ฿ GY-521 IMU on the I2C bus adds the **live lean angle** (with L/R side),
+the **max lean per lap on each side** and the **braking G peak** — on the LEAN
+page, in the lap CSV (`lean_max_deg`) and as RaceChrono channels (PID 0x101).
+One-command calibration (`g`, bike upright). The estimate blends the roll gyro
+with speed × yaw-rate kinematics — the honest approach for a bike, where a
+plain accelerometer reads ~0° mid-corner.
+
 ### 6b. ECU telemetry (Kawasaki KDS)
 With an L9637D transceiver (~40 ฿) on the bike's diagnostic plug, the device
 reads **RPM, throttle position, gear, coolant temperature and speed** straight
@@ -149,7 +157,7 @@ work remains once the part is on the desk.
 |---|---|---|---|
 | **u-blox NEO-M8N or M10 GPS module** | 250-400 ฿ | 10-25 Hz fixes → lap precision from ~0.2 s down to **~0.05 s**, sharper predictive delta | ✅ Works as-is: same wiring, same UBX config — just raise `GPS_MEAS_RATE_MS` |
 | **L9637D + 510Ω/10kΩ + 4-pin plug** | ~150 ฿ | **ECU telemetry**: RPM, throttle, gear, coolant → screen + RaceChrono channels | ✅ Firmware ready (v1.4) — wire it and it links (README Step 7) |
-| **MPU6050 IMU** (accelerometer + gyro) | 40-80 ฿ | **Lean angle** display and per-lap max, G-force logging, braking-point analysis | 🔧 New code needed (I2C driver + sensor fusion) — the most fun future project |
+| **MPU6050 IMU** (accelerometer + gyro) | 40-80 ฿ | **Lean angle** display and per-lap max, G-force logging | ✅ Firmware ready (v1.5) — plug it on the I2C bus, calibrate with `g` |
 | **2.42" SSD1309 OLED** | 150-250 ฿ | Twice the screen: bigger digits, delta readable further into the fairing | ✅ One line to change (U8g2 constructor) |
 | **2 × 100 kΩ resistors** | ~5 ฿ | **Battery gauge** on the top bar (voltage divider into an ADC pin) | 🔧 Small addition (~30 lines) |
 | **Second push button** | ~20 ฿ | One-press manual markers (pit-in, traffic) or quicker page UX | 🔧 Small addition |

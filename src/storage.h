@@ -35,7 +35,8 @@ class Storage {
 
   // ---- Lap log ----
   void appendLap(const char* dateStr, uint32_t crossMsOfDay, const char* track,
-                 int session, int lapIdx, uint32_t lapMs, float maxKmh);
+                 int session, int lapIdx, uint32_t lapMs, float maxKmh,
+                 float leanMaxDeg);
   File openCsvRead();
   void dumpCsv(Stream& out);
   void clearCsv();
@@ -43,6 +44,10 @@ class Storage {
   // ---- Pit mode flag (survives the reboot into/out of WiFi mode) ----
   bool pitFlag();
   void setPitFlag(bool on);
+
+  // ---- IMU calibration (5 floats: gyro biases + accel level offsets) ----
+  bool loadImuCal(float out[5]);
+  void saveImuCal(const float in[5]);
 
  private:
   void trackPath(char* buf, size_t n, uint8_t id);

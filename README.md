@@ -278,6 +278,25 @@ PID 256 and the formulas `bytesToUInt(raw, 0, 2)` (RPM),
 `bytesToUInt(raw, 2, 1)` (throttle %), `bytesToUInt(raw, 3, 1)` (gear),
 `bytesToUInt(raw, 4, 1) - 40` (coolant °C).
 
+### Step 8 — Lean angle & G-forces (optional, MPU6050)
+
+Plug a **GY-521 MPU6050** on the I2C bus (VCC→3V3, GND, SDA→GPIO21,
+SCL→GPIO22 — same four rails as the OLED, chain it). Mount the board **flat
+in the enclosure, X axis pointing forward**.
+
+1. Flash, open the serial console, put the bike upright and still, type `g`
+   (calibration — stored in flash, redo it if you remount the box).
+2. Ride: the LEAN page shows the live angle with an L/R side letter, the
+   per-lap max on both sides and the braking G peak. Each lap's max lean is
+   logged to the CSV (`lean_max_deg`).
+3. The estimate blends the roll gyro with the speed×yaw-rate kinematics —
+   sane above ~30 km/h; treat absolute values as indicative until we validate
+   them on track.
+
+**RaceChrono channels:** PID `0x101` — byte 0 lean (signed, + = right):
+`bytesToInt(raw, 0, 1)`; byte 1 longitudinal G × 10: `bytesToInt(raw, 1, 1) * 0.1`;
+bytes 2/3 per-lap max lean L/R.
+
 ---
 
 ## 4. Usage — quick reference
@@ -289,6 +308,7 @@ PID 256 and the formulas `bytesToUInt(raw, 0, 2)` (RPM),
 | **RACE** | current lap (big), speed, sats, live delta + Best (or Last/Best) | — |
 | **SESSION** | session #, laps (best `*`), vmax, theoretical best, average | reset session |
 | **ECU** | gear (big), RPM, throttle bar, coolant temp (KDS bridge) | — |
+| **LEAN** | lean angle (big, L/R), per-lap max lean, braking G (MPU6050) | — |
 | **GPS** | fix, satellites, HDOP, rate Hz, position | **toggle pit mode (WiFi)** |
 | **LINE** | active track, line status and distance | set the line here |
 
@@ -327,6 +347,7 @@ riding.
 | `r` | reset the session |
 | `z` | erase the active track records (best, sectors, reference) |
 | `w` | toggle pit mode (WiFi hotspot, reboots) |
+| `g` | calibrate the IMU (bike upright and still) |
 | `L <lat> <lon> <hdg> [half-width]` | create a track manually (e.g. from Google Maps) |
 
 ### Main settings (`src/config.h`)
@@ -416,6 +437,9 @@ src/
 │                 pure logic, unit-tested on the host)
 ├── kds.cpp/.h    K-line driver: ISO 14230 fast init, echo handling,
 │                 non-blocking register polling (RPM, throttle, gear...)
+├── imu_math.h    Lean-angle estimation math (complementary filter, kinematic
+│                 lean) — pure logic, unit-tested on the host
+├── imu.cpp/.h    MPU6050 driver (raw I2C), calibration, per-lap peaks
 ├── pit.cpp/.h    Pit mode: WiFi hotspot, embedded web app (lap log, track
 │                 management) and OTA firmware updates
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
@@ -472,6 +496,8 @@ The interesting parts:
 | Screen suddenly dark | Parking dim (1 min without movement) — press a button or start riding |
 | ECU page stays `---` | Ignition off, K-line not wired (see Step 7), TX/RX swapped, or the bike is CAN-based (check with the multimeter) |
 | Throttle % looks wrong | Calibrate: log the raw values at closed/full throttle and adjust `THROTTLE_RAW_*` in `src/kds_proto.h` |
+| LEAN page shows `no sensor` | MPU6050 not wired (I2C 21/22), or a solder joint on its header pins |
+| Lean angle drifts or reads offset | Recalibrate with `g` (bike upright, still); check the board is mounted flat, X forward |
 
 ---
 

@@ -49,7 +49,7 @@ void Display::notify(const char* msg, uint32_t durationMs) {
 }
 
 void Display::render(Page page, const LapTimer& t, const GpsView& g, const EcuData& e,
-                     uint32_t now, const char* trackName) {
+                     const ImuData& m, uint32_t now, const char* trackName) {
   u8g2_.clearBuffer();
   bool flashActive = t.lapCount() > 0 && t.timing() &&
                      now - t.lastCrossLocalMs() < LAP_FLASH_MS;
@@ -62,6 +62,7 @@ void Display::render(Page page, const LapTimer& t, const GpsView& g, const EcuDa
       case Page::Race:    drawRace(t, g, now); break;
       case Page::Session: drawSession(t); break;
       case Page::Ecu:     drawEcu(e); break;
+      case Page::Lean:    drawLean(m); break;
       case Page::Gps:     drawGps(g); break;
       case Page::Line:    drawLinePage(t, g, trackName); break;
       default: break;
@@ -240,6 +241,41 @@ void Display::drawSession(const LapTimer& t) {
 
   u8g2_.setFont(u8g2_font_6x10_tf);
   drawCentered("long press = reset", 63);
+}
+
+void Display::drawLean(const ImuData& m) {
+  char b[32];
+  u8g2_.setFont(u8g2_font_6x12_tf);
+  u8g2_.drawStr(0, 10, "LEAN");
+  if (m.present) {
+    snprintf(b, sizeof(b), "G %+.1f", m.gLong);
+    u8g2_.drawStr(128 - u8g2_.getStrWidth(b), 10, b);
+  } else {
+    u8g2_.setFont(u8g2_font_6x10_tf);
+    u8g2_.drawStr(0, 30, "IMU: no sensor");
+    u8g2_.drawStr(0, 40, "MPU6050 on the I2C bus");
+    u8g2_.drawStr(0, 50, "(SDA 21 / SCL 22)");
+    return;
+  }
+
+  // Current lean angle, huge, with the side letter.
+  float lean = m.leanDeg;
+  char side = lean < -2 ? 'L' : (lean > 2 ? 'R' : ' ');
+  float a = fabsf(lean);
+  u8g2_.setFont(u8g2_font_logisoso28_tr);
+  snprintf(b, sizeof(b), "%2.0f", (double)(a < 90 ? a : 90));
+  int w = u8g2_.getStrWidth(b);
+  u8g2_.drawStr((128 - w) / 2 - 8, 48, b);
+  if (side != ' ') {
+    u8g2_.setFont(u8g2_font_logisoso16_tr);
+    char s[2] = {side, 0};
+    u8g2_.drawStr((128 + w) / 2 - 2, 48, s);
+  }
+
+  u8g2_.setFont(u8g2_font_6x12_tf);
+  snprintf(b, sizeof(b), "max L%2.0f R%2.0f  B%.1fG",
+           m.maxLeanL, m.maxLeanR, m.maxBrakeG > 0 ? m.maxBrakeG : 0);
+  drawCentered(b, 63);
 }
 
 void Display::drawGps(const GpsView& g) {

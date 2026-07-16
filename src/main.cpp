@@ -21,8 +21,9 @@
 #include "bt_nmea.h"
 #include "pit.h"
 #include "kds.h"
+#include "imu.h"
 
-static const char* VERSION = "v1.4";
+static const char* VERSION = "v1.5";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
@@ -32,6 +33,9 @@ Button    btnBoot, btnExt;
 PitMode   pit;
 #if ENABLE_KDS
 KdsBus    kdsBus;
+#endif
+#if ENABLE_IMU && !defined(SIMULATE_GPS)
+Imu       imuSensor;
 #endif
 #if BT_MODE == BT_MODE_RACECHRONO
 BleRaceChrono btLink;  // RaceChrono app, over BLE
@@ -62,8 +66,10 @@ void togglePitMode();
 #ifdef SIMULATE_GPS
 static GpsFix   simFix;
 static EcuData  simEcu;
+static ImuData  simImu;
 static uint32_t simLastMs = 0;
 static float    simTheta = 0;
+static float    simPrevV = 0;
 constexpr double SIM_LAT0 = 13.7563;
 constexpr double SIM_LON0 = 100.5018;
 constexpr float  SIM_R = 250.0f;  // radius in meters
@@ -105,6 +111,15 @@ void simLoop() {
   simEcu.coolantC = 82;
   simEcu.updatedMs = now;
 
+  // Fake lean/G from the circle: steady-state lean = atan(v^2 / (r*g)).
+  simImu.present = true;
+  simImu.leanDeg = atanf((v * v) / (SIM_R * 9.81f)) * (float)RAD_TO_DEG;  // right turn
+  simImu.gLong = (v - simPrevV) / (GPS_MEAS_RATE_MS / 1000.0f) / 9.81f;
+  simPrevV = v;
+  simImu.updatedMs = now;
+  if (simImu.leanDeg > simImu.maxLeanR) simImu.maxLeanR = simImu.leanDeg;
+  if (-simImu.gLong > simImu.maxBrakeG) simImu.maxBrakeG = -simImu.gLong;
+
   if (lapTimer.onFix(simFix)) handleLapDone();
 #if BT_MODE != BT_MODE_OFF
   if (!pitActive) btLink.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
@@ -132,12 +147,30 @@ static const EcuData& currentEcu() {
 #endif
 }
 
-// Skip the ECU page when the KDS bridge is compiled out.
-static Page nextPage(Page p) {
-  int n = ((int)p + 1) % (int)Page::COUNT;
-#if !ENABLE_KDS && !defined(SIMULATE_GPS)
-  if ((Page)n == Page::Ecu) n = (n + 1) % (int)Page::COUNT;
+static const ImuData& currentImu() {
+#ifdef SIMULATE_GPS
+  return simImu;
+#elif ENABLE_IMU
+  return imuSensor.data();
+#else
+  static ImuData empty;
+  return empty;
 #endif
+}
+
+// Skip the pages whose feature is compiled out.
+static Page nextPage(Page p) {
+  int n = (int)p;
+  while (true) {
+    n = (n + 1) % (int)Page::COUNT;
+#if !ENABLE_KDS && !defined(SIMULATE_GPS)
+    if ((Page)n == Page::Ecu) continue;
+#endif
+#if !ENABLE_IMU && !defined(SIMULATE_GPS)
+    if ((Page)n == Page::Lean) continue;
+#endif
+    break;
+  }
   return (Page)n;
 }
 
@@ -282,6 +315,14 @@ void setup() {
   kdsBus.begin(Serial1);
 #endif
 
+#if ENABLE_IMU && !defined(SIMULATE_GPS)
+  imuSensor.begin();
+  {
+    float cal[5];
+    if (storage.loadImuCal(cal)) imuSensor.setCal(cal);
+  }
+#endif
+
   if (pitActive) {
     PitActions actions{pitSelectTrack, pitRenameTrack, pitDeleteTrack,
                        pitActiveName, pitActiveBest};
@@ -317,6 +358,10 @@ void loop() {
   if (!pitActive) kdsBus.loop();
 #endif
 
+#if ENABLE_IMU && !defined(SIMULATE_GPS)
+  imuSensor.loop(currentFix().valid ? currentFix().speedKmh : 0.0f);
+#endif
+
   // Stream the engine channels to RaceChrono as a fabricated CAN frame.
 #if BT_MODE == BT_MODE_RACECHRONO
   {
@@ -336,6 +381,25 @@ void loop() {
       p[6] = 0;
       p[7] = 0;
       btLink.sendCan(ECU_CAN_ID, p, sizeof(p));
+    }
+    // Lean/G channels (PID 0x101) at the same cadence.
+    static uint32_t lastImuCanMs = 0;
+    const ImuData& m = currentImu();
+    if (!pitActive && m.present && now - lastImuCanMs >= ECU_CAN_PERIOD_MS &&
+        now - m.updatedMs < 2000) {
+      lastImuCanMs = now;
+      uint8_t q[8] = {0};
+      float lean = m.leanDeg;
+      if (lean > 127) lean = 127;
+      if (lean < -127) lean = -127;
+      q[0] = (uint8_t)(int8_t)lean;                       // deg, + = right
+      float gl = m.gLong * 10.0f;
+      if (gl > 127) gl = 127;
+      if (gl < -127) gl = -127;
+      q[1] = (uint8_t)(int8_t)gl;                         // g x 10
+      q[2] = (uint8_t)(m.maxLeanL < 255 ? m.maxLeanL : 255);
+      q[3] = (uint8_t)(m.maxLeanR < 255 ? m.maxLeanR : 255);
+      btLink.sendCan(IMU_CAN_ID, q, sizeof(q));
     }
   }
 #endif
@@ -372,7 +436,7 @@ void loop() {
   if (now - lastRenderMs >= DISPLAY_PERIOD_MS) {
     lastRenderMs = now;
     GpsView gv = buildGpsView();
-    display.render(page, lapTimer, gv, currentEcu(), now, activeTrackName);
+    display.render(page, lapTimer, gv, currentEcu(), currentImu(), now, activeTrackName);
   }
 }
 
@@ -386,8 +450,18 @@ void handleLapDone() {
 #else
   gpsMod.dateStr(date, sizeof(date));
 #endif
+  const ImuData& m = currentImu();
+  float lapLean = m.present ? fmaxf(m.maxLeanL, m.maxLeanR) : 0.0f;
   storage.appendLap(date, lapTimer.lastCrossMsOfDay(), activeTrackName,
-                    lapTimer.sessionIndex(), n, lapMs, lapTimer.lastLapMaxSpeed());
+                    lapTimer.sessionIndex(), n, lapMs, lapTimer.lastLapMaxSpeed(),
+                    lapLean);
+#if ENABLE_IMU && !defined(SIMULATE_GPS)
+  imuSensor.resetLapPeaks();
+#elif defined(SIMULATE_GPS)
+  simImu.maxLeanL = 0;
+  simImu.maxLeanR = 0;
+  simImu.maxBrakeG = 0;
+#endif
 
   // Persist the track records: full write (with the new reference trace) on
   // an all-time best, header-only when just a sector improved.
@@ -408,7 +482,7 @@ void togglePitMode() {
   storage.setPitFlag(!pitActive);
   display.notify(pitActive ? "WIFI OFF, REBOOT" : "WIFI ON, REBOOT");
   GpsView gv = buildGpsView();
-  display.render(page, lapTimer, gv, currentEcu(), millis(), activeTrackName);
+  display.render(page, lapTimer, gv, currentEcu(), currentImu(), millis(), activeTrackName);
   delay(900);
   ESP.restart();
 }
@@ -516,6 +590,7 @@ void handleSerial() {
         Serial.println("  r  reset the session");
         Serial.println("  z  erase the active track records (best/sectors/reference)");
         Serial.println("  w  toggle pit mode (WiFi hotspot, reboots)");
+        Serial.println("  g  calibrate the IMU (bike upright and still)");
         Serial.println("  L <lat> <lon> <hdg> [half-width]  set the line manually");
         break;
       case 'i': {
@@ -546,8 +621,30 @@ void handleSerial() {
         } else {
           Serial.println("ECU: no link");
         }
+        const ImuData& mm = currentImu();
+        if (mm.present) {
+          Serial.printf("IMU: lean %+.1f deg, G %+.2f, max L%.0f/R%.0f, brake %.2fG\n",
+                        mm.leanDeg, mm.gLong, mm.maxLeanL, mm.maxLeanR, mm.maxBrakeG);
+        } else {
+          Serial.println("IMU: no sensor");
+        }
         break;
       }
+      case 'g':
+#if ENABLE_IMU && !defined(SIMULATE_GPS)
+        Serial.println("Calibrating IMU: keep the bike upright and still...");
+        if (imuSensor.calibrate()) {
+          float cal[5];
+          imuSensor.getCal(cal);
+          storage.saveImuCal(cal);
+          Serial.println("IMU calibrated and saved.");
+        } else {
+          Serial.println("IMU calibration failed (sensor missing?).");
+        }
+#else
+        Serial.println("IMU calibration not available in this build.");
+#endif
+        break;
       case 'T': {
         int id = atoi(buf + 1);
         if (id > 0) {

@@ -87,11 +87,11 @@ out — a 21st-century pit board.
 | Second 0.96" OLED (or bigger) | 85-250 ฿ | the pit display |
 | Any power bank | — | powers the pit box |
 
-## E. Lean angle & G-forces (MPU6050) 🔧 *code to write — parts already ordered*
+## E. Lean angle & G-forces (MPU6050) ✅ *firmware done (v1.5), sensor ordered*
 
-The MPU6050 (ordered ✅) on the I2C bus adds **lean angle** (live + max per
-lap), acceleration and braking G. Displayed, logged to the CSV, streamed to
-RaceChrono as channels, and available to project C's overlays.
+Live lean angle (L/R) with per-lap max on both sides, braking G peak — LEAN
+page, CSV column, RaceChrono channels (PID 0x101). Calibration with the `g`
+serial command, bike upright. See README Step 8.
 
 **To buy: nothing — the sensor is on its way.**
 
@@ -104,7 +104,7 @@ The ESP32 can drive a GoPro over BLE (Open GoPro API): recording starts above
 ## Suggested order of battle
 
 1. Parts arrive → assemble the v1 (README steps 0-6).
-2. **A** as soon as the L9637D arrives (firmware ready, 30 min of wiring).
-3. **E** right after (sensor already ordered) — new firmware work.
-4. **C** any rainy day (pure software).
-5. **B** and **D** when the next Shopee order ships.
+2. **A** and **E** as soon as the parts arrive — both firmwares are ready,
+   it's wiring + calibration only (README steps 7 and 8).
+3. **C** any rainy day (pure software).
+4. **B** and **D** when the next Shopee order ships.

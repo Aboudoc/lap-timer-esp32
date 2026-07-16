@@ -4,8 +4,9 @@
 #include "config.h"
 #include "laptimer.h"
 #include "kds_proto.h"
+#include "imu_math.h"
 
-enum class Page : uint8_t { Race, Session, Ecu, Gps, Line, COUNT };
+enum class Page : uint8_t { Race, Session, Ecu, Lean, Gps, Line, COUNT };
 
 // "Flat" view of the GPS state, filled by main.cpp (real GPS or simulation).
 struct GpsView {
@@ -27,7 +28,7 @@ class Display {
   void begin();
   void splash(const char* version);
   void render(Page page, const LapTimer& t, const GpsView& g, const EcuData& e,
-              uint32_t now, const char* trackName);
+              const ImuData& m, uint32_t now, const char* trackName);
   void notify(const char* msg, uint32_t durationMs = 1800);
   void setDim(bool dim);  // low contrast when parked (battery + OLED wear)
 
@@ -37,6 +38,7 @@ class Display {
   void drawLapFlash(const LapTimer& t);
   void drawSession(const LapTimer& t);
   void drawEcu(const EcuData& e);
+  void drawLean(const ImuData& m);
   void drawGps(const GpsView& g);
   void drawLinePage(const LapTimer& t, const GpsView& g, const char* trackName);
   void drawNotify();
