@@ -6,7 +6,7 @@
 
 enum class Page : uint8_t { Race, Session, Gps, Line, COUNT };
 
-// Vue "plate" de l'etat GPS, remplie par main.cpp (GPS reel ou simulation).
+// "Flat" view of the GPS state, filled by main.cpp (real GPS or simulation).
 struct GpsView {
   bool     hasFix = false;
   int      sats = 0;

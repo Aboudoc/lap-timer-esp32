@@ -5,7 +5,7 @@ void GpsModule::begin(HardwareSerial& serial) {
   configureModule();
 }
 
-// Attend de voir passer un debut de phrase NMEA ("$G") sur le port serie.
+// Waits until the start of an NMEA sentence ("$G") shows up on the serial port.
 bool GpsModule::waitForNmea(uint32_t timeoutMs) {
   uint32_t start = millis();
   int state = 0;
@@ -24,9 +24,9 @@ bool GpsModule::waitForNmea(uint32_t timeoutMs) {
   return false;
 }
 
-// Essaie plusieurs vitesses jusqu'a recevoir du NMEA valide.
-// Le module demarre a 9600 a froid, mais reste au baud configure tant que
-// sa pile de sauvegarde est chargee (demarrage a chaud).
+// Tries several baud rates until valid NMEA is received.
+// The module cold-boots at 9600, but keeps the configured baud as long as
+// its backup battery holds a charge (warm start).
 uint32_t GpsModule::detectBaud() {
   const uint32_t candidates[] = {GPS_TARGET_BAUD, 9600, 115200, 38400, 19200};
   for (uint32_t b : candidates) {
@@ -38,7 +38,7 @@ uint32_t GpsModule::detectBaud() {
   return 0;
 }
 
-// Envoie une trame UBX (protocole binaire u-blox) avec sa somme de controle.
+// Sends a UBX frame (u-blox binary protocol) with its checksum.
 void GpsModule::sendUbx(uint8_t cls, uint8_t id, const uint8_t* payload, uint16_t len) {
   uint8_t hdr[6] = {0xB5, 0x62, cls, id, (uint8_t)(len & 0xFF), (uint8_t)(len >> 8)};
   uint8_t ckA = 0, ckB = 0;
@@ -51,7 +51,7 @@ void GpsModule::sendUbx(uint8_t cls, uint8_t id, const uint8_t* payload, uint16_
   serial_->flush();
 }
 
-// Frequence d'emission d'une phrase NMEA standard (classe 0xF0) sur le port courant.
+// Emission rate of a standard NMEA sentence (class 0xF0) on the current port.
 void GpsModule::setNmeaRate(uint8_t msgId, uint8_t rate) {
   uint8_t p[3] = {0xF0, msgId, rate};
   sendUbx(0x06, 0x01, p, 3);  // CFG-MSG
@@ -66,20 +66,20 @@ void GpsModule::configureModule() {
   baud_ = detected ? detected : 9600;
   if (!detected) {
     serial_->updateBaudRate(9600);
-    Serial.println("[GPS] pas de NMEA detecte (module debranche ?), config envoyee a 9600");
+    Serial.println("[GPS] no NMEA detected (module unplugged?), config sent at 9600");
   }
 
-  // Passe l'UART du module au baud cible si necessaire (CFG-PRT).
+  // Switch the module's UART to the target baud if needed (CFG-PRT).
   if (baud_ != GPS_TARGET_BAUD) {
     uint8_t prt[20] = {0};
     prt[0]  = 1;                                   // portID 1 = UART
-    prt[8]  = 0xD0; prt[9] = 0x08;                 // mode 0x000008D0 : 8N1
-    prt[12] = (uint8_t)(GPS_TARGET_BAUD & 0xFF);   // baud, petit-boutiste
+    prt[8]  = 0xD0; prt[9] = 0x08;                 // mode 0x000008D0: 8N1
+    prt[12] = (uint8_t)(GPS_TARGET_BAUD & 0xFF);   // baud, little-endian
     prt[13] = (uint8_t)((GPS_TARGET_BAUD >> 8) & 0xFF);
     prt[14] = (uint8_t)((GPS_TARGET_BAUD >> 16) & 0xFF);
     prt[15] = (uint8_t)((GPS_TARGET_BAUD >> 24) & 0xFF);
-    prt[16] = 0x07;                                // entree : UBX+NMEA+RTCM
-    prt[18] = 0x03;                                // sortie : UBX+NMEA
+    prt[16] = 0x07;                                // in: UBX+NMEA+RTCM
+    prt[18] = 0x03;                                // out: UBX+NMEA
     sendUbx(0x06, 0x00, prt, 20);
     delay(100);
     serial_->updateBaudRate(GPS_TARGET_BAUD);
@@ -88,11 +88,11 @@ void GpsModule::configureModule() {
     if (waitForNmea(1000)) {
       baud_ = GPS_TARGET_BAUD;
     } else {
-      serial_->updateBaudRate(baud_);  // echec : on reste au baud detecte
+      serial_->updateBaudRate(baud_);  // failed: stay at the detected baud
     }
   }
 
-  // Ne garde que RMC (position/vitesse/cap/heure) et GGA (sats/hdop).
+  // Keep only RMC (position/speed/course/time) and GGA (sats/hdop).
   setNmeaRate(0x00, 1);  // GGA
   setNmeaRate(0x01, 0);  // GLL
   setNmeaRate(0x02, 0);  // GSA
@@ -100,18 +100,18 @@ void GpsModule::configureModule() {
   setNmeaRate(0x04, 1);  // RMC
   setNmeaRate(0x05, 0);  // VTG
 
-  // Cadence de mesure (CFG-RATE) : 200 ms -> 5 Hz.
+  // Measurement rate (CFG-RATE): 200 ms -> 5 Hz.
   uint8_t rate[6] = {(uint8_t)(GPS_MEAS_RATE_MS & 0xFF), (uint8_t)(GPS_MEAS_RATE_MS >> 8),
                      0x01, 0x00, 0x01, 0x00};
   sendUbx(0x06, 0x08, rate, 6);
   delay(30);
 
-  // Sauvegarde dans la RAM secourue du module (CFG-CFG) : le prochain
-  // demarrage a chaud repart directement bien configure.
+  // Save to the module's battery-backed RAM (CFG-CFG): the next warm start
+  // boots already configured.
   uint8_t cfg[13] = {0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0, 0, 0, 0x17};
   sendUbx(0x06, 0x09, cfg, 13);
 
-  Serial.printf("[GPS] configure : %lu bauds, %u ms/mesure\n",
+  Serial.printf("[GPS] configured: %lu baud, %u ms/measurement\n",
                 (unsigned long)baud_, GPS_MEAS_RATE_MS);
 }
 
@@ -119,15 +119,15 @@ bool GpsModule::update() {
   bool newFix = false;
   while (serial_->available()) {
     if (!gps_.encode((char)serial_->read())) continue;
-    // Une phrase complete vient d'etre parsee. On emet un fix quand position
-    // ET vitesse sont fraiches (= phrase RMC), une seule fois par epoque.
+    // A complete sentence was just parsed. Emit a fix when position AND
+    // speed are fresh (= RMC sentence), once per epoch.
     if (!gps_.location.isUpdated() || !gps_.speed.isUpdated() || !gps_.time.isValid()) continue;
 
     uint32_t mod = ((uint32_t)gps_.time.hour() * 3600UL + gps_.time.minute() * 60UL +
                     gps_.time.second()) * 1000UL + gps_.time.centisecond() * 10UL;
     if (mod == lastEmitMsOfDay_) {
-      // Meme epoque (phrase redondante) : on consomme juste les valeurs
-      // pour remettre les drapeaux "updated" a zero.
+      // Same epoch (redundant sentence): just consume the values to clear
+      // the "updated" flags.
       gps_.location.lat(); gps_.location.lng(); gps_.speed.kmph(); gps_.course.deg();
       continue;
     }
@@ -179,6 +179,6 @@ void GpsModule::dateStr(char* out, size_t n) {
   if (gps_.date.isValid()) {
     snprintf(out, n, "%04d-%02d-%02d", gps_.date.year(), gps_.date.month(), gps_.date.day());
   } else {
-    snprintf(out, n, "????-??-??");
+    snprintf(out, n, "0000-00-00");
   }
 }

@@ -1,12 +1,12 @@
-// Lap timer GPS — ESP32 + NEO-6M + OLED SSD1306
-// Ninja 400 / track days MSP Bangkok
+// GPS lap timer — ESP32 + NEO-6M + SSD1306 OLED
+// Ninja 400 / MSP Bangkok track days
 //
-// Boutons (BOOT integre ou bouton externe sur GPIO25) :
-//   appui court : page suivante (RACE -> SESSION -> GPS -> LIGNE)
-//   appui long  : SESSION = remise a zero de la session
-//                 LIGNE   = definir la ligne de depart ici (en roulant)
+// Buttons (on-board BOOT or external button on GPIO25):
+//   short press: next page (RACE -> SESSION -> GPS -> LINE)
+//   long press : SESSION = reset the session
+//                LINE    = set the start line here (while riding)
 //
-// Commandes serie (115200 bauds) : taper 'h' pour l'aide.
+// Serial commands (115200 baud): type 'h' for help.
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -35,22 +35,22 @@ void handleButton(ButtonEvent ev);
 void handleSerial();
 void trySetLineHere();
 
-// ==================== Mode simulation ====================
-// Circuit virtuel circulaire (~39-44 s au tour) pour tester ecran,
-// boutons et logique de chrono sans GPS. Voir env "esp32dev-sim".
+// ==================== Simulation mode ====================
+// Virtual circular track (~39-44 s per lap) to test the display, buttons
+// and timing logic without a GPS. See the "esp32dev-sim" environment.
 #ifdef SIMULATE_GPS
 static GpsFix   simFix;
 static uint32_t simLastMs = 0;
 static float    simTheta = 0;
 constexpr double SIM_LAT0 = 13.7563;
 constexpr double SIM_LON0 = 100.5018;
-constexpr float  SIM_R = 250.0f;  // rayon en metres
+constexpr float  SIM_R = 250.0f;  // radius in meters
 
 void simSetup() {
   StartLine l;
-  l.lat = SIM_LAT0 + SIM_R / 111194.9;  // point nord du cercle
+  l.lat = SIM_LAT0 + SIM_R / 111194.9;  // north point of the circle
   l.lon = SIM_LON0;
-  l.headingDeg = 90;                    // on y passe plein est
+  l.headingDeg = 90;                    // crossed heading due east
   l.isSet = true;
   lapTimer.setLine(l);
 }
@@ -60,7 +60,7 @@ void simLoop() {
   if (now - simLastMs < GPS_MEAS_RATE_MS) return;
   simLastMs = now;
 
-  float v = 36.0f + 6.0f * sinf(now / 9000.0f);              // m/s, varie d'un tour a l'autre
+  float v = 36.0f + 6.0f * sinf(now / 9000.0f);              // m/s, varies lap to lap
   simTheta += (v / SIM_R) * (GPS_MEAS_RATE_MS / 1000.0f);
 
   simFix.lat = SIM_LAT0 + (SIM_R * cos(simTheta)) / 111194.9;
@@ -112,7 +112,7 @@ static GpsView buildGpsView() {
 }
 
 void setup() {
-  setCpuFrequencyMhz(80);  // pas besoin de plus -> economise la batterie
+  setCpuFrequencyMhz(80);  // no need for more -> saves battery
   Serial.begin(SERIAL_BAUD);
   WiFi.mode(WIFI_OFF);
   btStop();
@@ -124,7 +124,7 @@ void setup() {
   StartLine line;
   if (storage.loadLine(line)) {
     lapTimer.setLine(line);
-    Serial.printf("[LIGNE] chargee : %.6f %.6f cap %.0f\n", line.lat, line.lon, line.headingDeg);
+    Serial.printf("[LINE] loaded: %.6f %.6f hdg %.0f\n", line.lat, line.lon, line.headingDeg);
   }
   bestEver = storage.bestEverMs();
 
@@ -133,12 +133,12 @@ void setup() {
 
 #ifdef SIMULATE_GPS
   simSetup();
-  Serial.println("[SIM] mode simulation actif");
+  Serial.println("[SIM] simulation mode active");
 #else
   gpsMod.begin(Serial2);
 #endif
 
-  Serial.println("Lap timer pret. Tape 'h' pour l'aide.");
+  Serial.println("Lap timer ready. Type 'h' for help.");
 }
 
 void loop() {
@@ -159,7 +159,7 @@ void loop() {
     handleButton(ev);
   }
 
-  // Chrono en cours : revient tout seul sur la page RACE apres un moment.
+  // While timing: automatically fall back to the RACE page after a while.
   if (page != Page::Race && lapTimer.timing() && now - lastButtonMs > PAGE_TIMEOUT_MS) {
     page = Page::Race;
   }
@@ -192,7 +192,7 @@ void handleLapDone() {
 
   char tm[12];
   fmtLapTime(tm, sizeof(tm), lapMs, true);
-  Serial.printf("[TOUR %d] %s  vmax %.1f km/h\n", n, tm, lapTimer.lastLapMaxSpeed());
+  Serial.printf("[LAP %d] %s  vmax %.1f km/h\n", n, tm, lapTimer.lastLapMaxSpeed());
 }
 
 void handleButton(ButtonEvent ev) {
@@ -200,13 +200,13 @@ void handleButton(ButtonEvent ev) {
     page = (Page)(((int)page + 1) % (int)Page::COUNT);
     return;
   }
-  // Appui long : action selon la page. Rien sur RACE/GPS pour eviter les
-  // fausses manips en roulant.
+  // Long press: action depends on the page. Nothing on RACE/GPS to avoid
+  // accidental actions while riding.
   switch (page) {
     case Page::Session:
       lapTimer.resetSession();
       display.notify("SESSION RESET");
-      Serial.println("[SESSION] remise a zero");
+      Serial.println("[SESSION] reset");
       break;
     case Page::Line:
       trySetLineHere();
@@ -219,11 +219,11 @@ void handleButton(ButtonEvent ev) {
 void trySetLineHere() {
   const GpsFix& f = currentFix();
   if (!f.valid || millis() - f.localMs > 2000) {
-    display.notify("PAS DE FIX GPS");
+    display.notify("NO GPS FIX");
     return;
   }
   if (f.speedKmh < MIN_SETLINE_SPEED_KMH) {
-    display.notify("ROULE A +10 KM/H");
+    display.notify("RIDE AT >10 KM/H");
     return;
   }
   StartLine l;
@@ -234,8 +234,8 @@ void trySetLineHere() {
   l.isSet = true;
   lapTimer.setLine(l);
   storage.saveLine(l);
-  display.notify("LIGNE DEFINIE !");
-  Serial.printf("[LIGNE] definie : %.6f %.6f cap %.0f\n", l.lat, l.lon, l.headingDeg);
+  display.notify("LINE SET!");
+  Serial.printf("[LINE] set: %.6f %.6f hdg %.0f\n", l.lat, l.lon, l.headingDeg);
 }
 
 void handleSerial() {
@@ -254,31 +254,31 @@ void handleSerial() {
 
     switch (buf[0]) {
       case 'h':
-        Serial.println("Commandes :");
-        Serial.println("  h  aide");
-        Serial.println("  i  infos (ligne, session, GPS)");
-        Serial.println("  d  dump du journal CSV des tours");
-        Serial.println("  x  efface le journal CSV");
-        Serial.println("  r  remise a zero de la session");
-        Serial.println("  z  efface le record absolu");
-        Serial.println("  L <lat> <lon> <cap> [demi-largeur]  definit la ligne a la main");
+        Serial.println("Commands:");
+        Serial.println("  h  help");
+        Serial.println("  i  info (line, session, GPS)");
+        Serial.println("  d  dump the CSV lap log");
+        Serial.println("  x  erase the CSV lap log");
+        Serial.println("  r  reset the session");
+        Serial.println("  z  erase the all-time best");
+        Serial.println("  L <lat> <lon> <hdg> [half-width]  set the line manually");
         break;
       case 'i': {
         const StartLine& l = lapTimer.line();
         if (l.isSet) {
-          Serial.printf("Ligne : %.6f %.6f cap %.0f demi-largeur %.0fm\n",
+          Serial.printf("Line: %.6f %.6f hdg %.0f half-width %.0fm\n",
                         l.lat, l.lon, l.headingDeg, l.halfWidthM);
         } else {
-          Serial.println("Ligne : non definie");
+          Serial.println("Line: not set");
         }
         char tm[12];
         fmtLapTime(tm, sizeof(tm), lapTimer.bestLapMs(), true);
-        Serial.printf("Session : %d tours, meilleur %s, vmax %.1f km/h\n",
+        Serial.printf("Session: %d laps, best %s, vmax %.1f km/h\n",
                       lapTimer.lapCount(), lapTimer.lapCount() ? tm : "-", lapTimer.sessionMaxSpeed());
         fmtLapTime(tm, sizeof(tm), bestEver, true);
-        Serial.printf("Record absolu : %s\n", bestEver ? tm : "-");
+        Serial.printf("All-time best: %s\n", bestEver ? tm : "-");
         GpsView g = buildGpsView();
-        Serial.printf("GPS : fix=%d sats=%d hdop=%.1f %.1fHz %lu bauds\n",
+        Serial.printf("GPS: fix=%d sats=%d hdop=%.1f %.1fHz %lu baud\n",
                       g.hasFix, g.sats, g.hdop, g.rateHz, (unsigned long)g.baud);
         break;
       }
@@ -287,16 +287,16 @@ void handleSerial() {
         break;
       case 'x':
         storage.clearCsv();
-        Serial.println("Journal CSV efface.");
+        Serial.println("CSV lap log erased.");
         break;
       case 'r':
         lapTimer.resetSession();
-        Serial.println("Session remise a zero.");
+        Serial.println("Session reset.");
         break;
       case 'z':
         bestEver = 0;
         storage.clearBestEver();
-        Serial.println("Record absolu efface.");
+        Serial.println("All-time best erased.");
         break;
       case 'L': {
         char* p = buf + 1;
@@ -306,7 +306,7 @@ void handleSerial() {
         double hd = strtod(p, &end); p = end;
         double hw = strtod(p, &end);
         if (la == 0 || lo == 0) {
-          Serial.println("Usage : L <lat> <lon> <cap> [demi-largeur]");
+          Serial.println("Usage: L <lat> <lon> <hdg> [half-width]");
           break;
         }
         StartLine l;
@@ -317,12 +317,12 @@ void handleSerial() {
         l.isSet = true;
         lapTimer.setLine(l);
         storage.saveLine(l);
-        Serial.printf("Ligne definie : %.6f %.6f cap %.0f demi-largeur %.0fm\n",
+        Serial.printf("Line set: %.6f %.6f hdg %.0f half-width %.0fm\n",
                       l.lat, l.lon, l.headingDeg, l.halfWidthM);
         break;
       }
       default:
-        Serial.println("Commande inconnue, 'h' pour l'aide.");
+        Serial.println("Unknown command, 'h' for help.");
         break;
     }
   }

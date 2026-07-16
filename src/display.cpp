@@ -1,7 +1,7 @@
 #include "display.h"
 #include <stdlib.h>
 
-// "+1.23" / "-0.45" (secondes.centiemes)
+// "+1.23" / "-0.45" (seconds.hundredths)
 static void fmtDelta(char* buf, size_t n, int32_t d) {
   uint32_t a = (uint32_t)labs((long)d);
   snprintf(buf, n, "%c%lu.%02lu", d < 0 ? '-' : '+',
@@ -11,7 +11,7 @@ static void fmtDelta(char* buf, size_t n, int32_t d) {
 void Display::begin() {
   u8g2_.begin();
   u8g2_.setBusClock(400000);
-  u8g2_.setContrast(255);  // plein contraste pour le soleil
+  u8g2_.setContrast(255);  // full contrast for direct sunlight
 }
 
 void Display::drawCentered(const char* s, int y) {
@@ -64,14 +64,14 @@ void Display::drawNotify() {
   u8g2_.setDrawColor(1);
 }
 
-// Fin de tour : ecran inverse tres visible pendant LAP_FLASH_MS.
+// Lap completed: inverted, highly visible screen for LAP_FLASH_MS.
 void Display::drawLapFlash(const LapTimer& t, uint32_t bestEverMs) {
   char b[32];
   u8g2_.drawBox(0, 0, 128, 64);
   u8g2_.setDrawColor(0);
 
   u8g2_.setFont(u8g2_font_6x12_tf);
-  snprintf(b, sizeof(b), "TOUR %d", t.lapCount());
+  snprintf(b, sizeof(b), "LAP %d", t.lapCount());
   u8g2_.drawStr(2, 11, b);
   if (bestEverMs && t.lastLapMs() == bestEverMs) {
     u8g2_.drawStr(128 - u8g2_.getStrWidth("RECORD!") - 2, 11, "RECORD!");
@@ -85,10 +85,10 @@ void Display::drawLapFlash(const LapTimer& t, uint32_t bestEverMs) {
   if (t.lapCount() >= 2) {
     char d[16];
     fmtDelta(d, sizeof(d), t.lastDeltaBestMs());
-    snprintf(b, sizeof(b), "%s vs meilleur", d);
+    snprintf(b, sizeof(b), "%s vs best", d);
     drawCentered(b, 63);
   } else {
-    drawCentered("premier tour", 63);
+    drawCentered("first lap", 63);
   }
   u8g2_.setDrawColor(1);
 }
@@ -96,9 +96,9 @@ void Display::drawLapFlash(const LapTimer& t, uint32_t bestEverMs) {
 void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
   char b[32];
 
-  // Bandeau superieur : tours, vitesse, etat GPS.
+  // Top bar: laps, speed, GPS state.
   u8g2_.setFont(u8g2_font_6x12_tf);
-  snprintf(b, sizeof(b), "T%d", t.lapCount());
+  snprintf(b, sizeof(b), "L%d", t.lapCount());
   u8g2_.drawStr(0, 10, b);
   snprintf(b, sizeof(b), "%3.0f km/h", g.speedKmh);
   drawCentered(b, 10);
@@ -109,7 +109,7 @@ void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
     u8g2_.drawStr(128 - u8g2_.getStrWidth("GPS!"), 10, "GPS!");
   }
 
-  // Temps du tour en cours, en tres gros.
+  // Current lap time, extra large.
   u8g2_.setFont(u8g2_font_logisoso24_tn);
   if (t.timing()) {
     fmtLapTime(b, sizeof(b), t.currentLapMs(now), false);
@@ -118,27 +118,27 @@ void Display::drawRace(const LapTimer& t, const GpsView& g, uint32_t now) {
   }
   drawCentered(b, 44);
 
-  // Ligne du bas : dernier / meilleur, ou aide contextuelle.
+  // Bottom line: last / best, or a contextual hint.
   u8g2_.setFont(u8g2_font_6x12_tf);
   if (t.lapCount() > 0) {
     char l[12], m[12];
     fmtLapTime(l, sizeof(l), t.lastLapMs(), true);
     fmtLapTime(m, sizeof(m), t.bestLapMs(), true);
-    snprintf(b, sizeof(b), "D%s  M%s", l, m);
+    snprintf(b, sizeof(b), "L%s  B%s", l, m);
     drawCentered(b, 63);
   } else if (!t.line().isSet) {
-    drawCentered("Ligne non definie", 63);
+    drawCentered("Line not set", 63);
   } else if (!t.timing()) {
-    drawCentered("Pret: franchir ligne", 63);
+    drawCentered("Ready: cross the line", 63);
   } else {
-    drawCentered("Tour 1 en cours...", 63);
+    drawCentered("Lap 1 running...", 63);
   }
 }
 
 void Display::drawSession(const LapTimer& t) {
   char b[32], tm[12];
   u8g2_.setFont(u8g2_font_6x12_tf);
-  snprintf(b, sizeof(b), "Tours:%d  Vmax %3.0f", t.lapCount(), t.sessionMaxSpeed());
+  snprintf(b, sizeof(b), "Laps:%d  Vmax %3.0f", t.lapCount(), t.sessionMaxSpeed());
   u8g2_.drawStr(0, 10, b);
 
   int stored = t.storedLaps();
@@ -148,10 +148,10 @@ void Display::drawSession(const LapTimer& t) {
     snprintf(b, sizeof(b), "%2d  %s %s", i + 1, tm, i == t.bestLapIndex() ? "*" : "");
     u8g2_.drawStr(4, 22 + row * 10, b);
   }
-  if (stored == 0) u8g2_.drawStr(4, 32, "(aucun tour)");
+  if (stored == 0) u8g2_.drawStr(4, 32, "(no laps yet)");
 
   u8g2_.setFont(u8g2_font_6x10_tf);
-  drawCentered("appui long = reset", 63);
+  drawCentered("long press = reset", 63);
 }
 
 void Display::drawGps(const GpsView& g) {
@@ -166,7 +166,7 @@ void Display::drawGps(const GpsView& g) {
   u8g2_.drawStr(0, 29, b);
   snprintf(b, sizeof(b), "Lon %11.5f", g.lon);
   u8g2_.drawStr(0, 39, b);
-  snprintf(b, sizeof(b), "Vit %.1f km/h", g.speedKmh);
+  snprintf(b, sizeof(b), "Spd %.1f km/h", g.speedKmh);
   u8g2_.drawStr(0, 49, b);
   snprintf(b, sizeof(b), "Age %lums  %lubd", (unsigned long)g.fixAgeMs, (unsigned long)g.baud);
   u8g2_.drawStr(0, 59, b);
@@ -175,13 +175,13 @@ void Display::drawGps(const GpsView& g) {
 void Display::drawLinePage(const LapTimer& t, const GpsView& g) {
   char b[32];
   u8g2_.setFont(u8g2_font_6x12_tf);
-  u8g2_.drawStr(0, 10, t.line().isSet ? "LIGNE: definie" : "LIGNE: non definie");
+  u8g2_.drawStr(0, 10, t.line().isSet ? "LINE: set" : "LINE: not set");
   if (t.line().isSet && !isnan(t.distToLineM())) {
-    snprintf(b, sizeof(b), "Dist %4.0fm  Cap %3.0f", t.distToLineM(), t.line().headingDeg);
+    snprintf(b, sizeof(b), "Dist %4.0fm  Hdg %3.0f", t.distToLineM(), t.line().headingDeg);
     u8g2_.drawStr(0, 22, b);
   }
   u8g2_.setFont(u8g2_font_6x10_tf);
-  u8g2_.drawStr(0, 36, "Appui long en passant");
-  u8g2_.drawStr(0, 46, "sur la ligne (>10kmh)");
-  u8g2_.drawStr(0, 56, "= definir la ligne ici");
+  u8g2_.drawStr(0, 36, "Long press while");
+  u8g2_.drawStr(0, 46, "crossing the line");
+  u8g2_.drawStr(0, 56, "at >10km/h = set here");
 }

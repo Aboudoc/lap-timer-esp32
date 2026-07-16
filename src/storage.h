@@ -3,9 +3,9 @@
 #include <Preferences.h>
 #include "laptimer.h"
 
-// Persistance :
-//  - NVS (Preferences) : ligne de depart + record absolu -> survivent a l'extinction
-//  - LittleFS (/laps.csv) : journal de tous les tours boucles
+// Persistence:
+//  - NVS (Preferences): start line + all-time best -> survive power-off
+//  - LittleFS (/laps.csv): log of every completed lap
 class Storage {
  public:
   void begin();

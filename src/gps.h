@@ -3,22 +3,22 @@
 #include <TinyGPS++.h>
 #include "config.h"
 
-// Instantane d'une position GPS, emis une fois par epoque de mesure.
+// Snapshot of a GPS position, emitted once per measurement epoch.
 struct GpsFix {
   double   lat = 0, lon = 0;
   float    speedKmh  = 0;
-  float    courseDeg = 0;      // cap sol (0 = nord, 90 = est)
-  uint32_t msOfDay   = 0;      // heure GPS (UTC) en ms depuis minuit
-  uint32_t localMs   = 0;      // millis() a la reception
+  float    courseDeg = 0;      // course over ground (0 = north, 90 = east)
+  uint32_t msOfDay   = 0;      // GPS time (UTC) in ms since midnight
+  uint32_t localMs   = 0;      // millis() when received
   bool     valid     = false;
 };
 
-// Pilote le NEO-6M : detection du baud, configuration UBX (5 Hz, RMC+GGA
-// uniquement, baud rapide), puis production de GpsFix propres.
+// Drives the NEO-6M: baud rate detection, UBX configuration (5 Hz, RMC+GGA
+// only, fast baud), then produces clean GpsFix snapshots.
 class GpsModule {
  public:
   void begin(HardwareSerial& serial);
-  bool update();  // a appeler en boucle ; true si un nouveau fix valide est disponible
+  bool update();  // call in the main loop; true when a new valid fix is available
   const GpsFix& fix() const { return fix_; }
 
   bool     hasFix();

@@ -1,7 +1,7 @@
 #include "laptimer.h"
 #include <math.h>
 
-// Difference entre deux heures "ms depuis minuit", robuste au passage de minuit.
+// Difference between two "ms since midnight" times, robust across midnight.
 static uint32_t dayDiff(uint32_t later, uint32_t earlier) {
   return (later + MS_PER_DAY - earlier) % MS_PER_DAY;
 }
@@ -19,8 +19,8 @@ void fmtLapTime(char* buf, size_t n, uint32_t ms, bool centis) {
 void LapTimer::setLine(const StartLine& line) {
   line_ = line;
   float h = line.headingDeg * (float)DEG_TO_RAD;
-  dirX_ = sinf(h);  // composante est
-  dirY_ = cosf(h);  // composante nord
+  dirX_ = sinf(h);  // east component
+  dirY_ = cosf(h);  // north component
   mPerDegLat_ = 111194.9f;
   mPerDegLon_ = 111194.9f * cosf((float)(line.lat * DEG_TO_RAD));
   resetSession();
@@ -40,22 +40,22 @@ void LapTimer::resetSession() {
   distToLine_ = NAN;
 }
 
-// Coordonnees locales en metres, centrees sur la ligne (x = est, y = nord).
+// Local coordinates in meters, centered on the line (x = east, y = north).
 void LapTimer::toLocal(double lat, double lon, float& x, float& y) const {
   x = (float)((lon - line_.lon) * mPerDegLon_);
   y = (float)((lat - line_.lat) * mPerDegLat_);
 }
 
-// Teste si le segment a->b franchit la porte dans le bon sens.
-// tOut = fraction du segment ou a lieu le franchissement (0..1).
+// Tests whether segment a->b crosses the gate in the right direction.
+// tOut = fraction of the segment where the crossing happens (0..1).
 bool LapTimer::crossed(const GpsFix& a, const GpsFix& b, float& tOut) const {
   float ax, ay, bx, by;
   toLocal(a.lat, a.lon, ax, ay);
   toLocal(b.lat, b.lon, bx, by);
 
-  // Distance signee le long du cap de franchissement : negatif = avant la
-  // ligne, positif = apres. Un tour = passage strict negatif -> positif,
-  // ce qui impose aussi le sens de passage.
+  // Signed distance along the crossing heading: negative = before the line,
+  // positive = past it. A lap = strict negative -> positive transition,
+  // which also enforces the crossing direction.
   float sa = ax * dirX_ + ay * dirY_;
   float sb = bx * dirX_ + by * dirY_;
   if (!(sa < 0.0f && sb >= 0.0f)) return false;
@@ -65,7 +65,7 @@ bool LapTimer::crossed(const GpsFix& a, const GpsFix& b, float& tOut) const {
 
   float t = sa / (sa - sb);
 
-  // Position laterale au point de franchissement : doit tomber dans la porte.
+  // Lateral position at the crossing point: must fall inside the gate.
   float ux = dirY_, uy = -dirX_;
   float lateral = (ax + t * dx) * ux + (ay + t * dy) * uy;
   if (fabsf(lateral) > line_.halfWidthM) return false;
@@ -95,14 +95,14 @@ bool LapTimer::onFix(const GpsFix& fix) {
   if (hasPrev_ && line_.isSet &&
       fix.localMs - prev_.localMs <= GPS_FIX_MAX_GAP_MS &&
       crossed(prev_, fix, t)) {
-    // Interpolation du moment exact du franchissement entre les deux fixes :
-    // c'est ce qui donne une precision bien meilleure que 1/5e de seconde.
+    // Interpolate the exact crossing moment between the two fixes: this is
+    // what gives a precision far better than 1/5th of a second.
     uint32_t dtFix        = dayDiff(fix.msOfDay, prev_.msOfDay);
     uint32_t crossMsOfDay = (prev_.msOfDay + (uint32_t)(t * dtFix)) % MS_PER_DAY;
     uint32_t crossLocalMs = prev_.localMs + (uint32_t)(t * (fix.localMs - prev_.localMs));
 
     if (!timing_) {
-      // Premier franchissement : le chrono demarre.
+      // First crossing: the clock starts.
       timing_ = true;
       lastCrossMsOfDay_ = crossMsOfDay;
       lastCrossLocalMs_ = crossLocalMs;

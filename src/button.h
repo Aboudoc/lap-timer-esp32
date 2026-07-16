@@ -4,9 +4,9 @@
 
 enum class ButtonEvent { None, Short, Long };
 
-// Bouton vers GND avec pull-up interne. Anti-rebond logiciel.
-// L'appui long est signale des que le seuil est atteint (sans attendre
-// le relachement) : plus agreable avec des gants.
+// Button to GND with internal pull-up. Software debounce.
+// A long press fires as soon as the threshold is reached (without waiting
+// for release): nicer with gloves on.
 class Button {
  public:
   void begin(int pin);

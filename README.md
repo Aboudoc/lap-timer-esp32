@@ -1,102 +1,100 @@
-# Lap Timer GPS — ESP32 🏍️⏱️
+# ESP32 GPS Lap Timer 🏍️⏱️
 
-Chronomètre de tours GPS autonome, fait maison, pour les track days moto
-(développé pour une Ninja 400 au circuit MSP Bangkok). Monté sur le réservoir
-via Quad Lock, il détecte tout seul chaque passage sur la ligne de
-départ/arrivée et affiche :
+A DIY, fully standalone GPS lap timer for motorcycle track days (built for a
+Ninja 400 at MSP Bangkok). Tank-mounted via Quad Lock, it automatically detects
+every pass over the start/finish line and shows:
 
-- le **temps du tour en cours** en gros chiffres,
-- à chaque tour bouclé : le **temps du tour** plein écran pendant 4 s avec
-  l'**écart vs ton meilleur tour** (`-0.32 vs meilleur`),
-- le dernier tour, le meilleur tour, la vitesse, le nombre de tours,
-- et il **enregistre tous les tours en CSV** dans sa mémoire (récupérables par USB).
+- the **current lap time** in big digits,
+- on every completed lap: the **lap time** full-screen for 4 s with the
+  **delta vs your best lap** (`-0.32 vs best`),
+- last lap, best lap, speed, lap count,
+- and it **logs every lap to a CSV file** in its internal flash (retrievable over USB).
 
-La ligne de départ se définit une seule fois, en roulant, d'un appui sur un
-bouton — elle est mémorisée pour toutes les sorties suivantes. Précision
-réelle : ~0,1-0,3 s (GPS 5 Hz + interpolation du franchissement).
+The start line is set once, while riding, with a single button press — then it
+is remembered for every future session. Real-world precision: ~0.1-0.3 s
+(5 Hz GPS + crossing interpolation).
 
 ---
 
-## 1. Les pièces et leur rôle
+## 1. Parts list and what each part does
 
-### Électronique
+### Electronics
 
-| Pièce | Rôle | Prix approx. |
+| Part | Role | Approx. price |
 |---|---|---|
-| **ESP32 DevKit** (CH340, USB-C) | Le cerveau. Lit le GPS, calcule les temps, pilote l'écran. Se programme par USB. | ~160 ฿ |
-| **GPS GY-NEO-6M** + antenne | Donne position, vitesse, cap et heure précise, 5 fois par seconde après configuration. | ~110 ฿ |
-| **Écran OLED 0,96" SSD1306 (I2C)** | Affichage. Très contrasté, lisible au soleil, ne consomme presque rien. | ~85 ฿ |
-| **TP4056** (micro-USB) | Chargeur de la batterie LiPo : tu recharges l'appareil comme un téléphone. | ~15 ฿ |
-| **Batterie LiPo 3,7 V ≥1000 mAh** | Alimente le tout. 1500 mAh ≈ 6-8 h d'autonomie, large pour une journée. | ~150 ฿ |
-| **Boost MT3608** | Élève le 3,7 V de la batterie en 5 V stable. Sans lui, l'ESP32 + GPS planteraient (tension trop juste). | ~20 ฿ |
-| **Interrupteur** à glissière | Marche/arrêt entre la batterie et le reste. | ~10 ฿ |
-| **Bouton poussoir étanche 12 mm** *(optionnel)* | Changer de page / définir la ligne avec des gants. Le bouton BOOT de l'ESP32 fait le même travail pour débuter. | ~25 ฿ |
-| **Fils Dupont** + **boîtier ABS** | Câblage de prototypage et coque de protection. | ~50 ฿ |
+| **ESP32 DevKit** (CH340, USB-C) | The brain. Reads the GPS, computes lap times, drives the display. Programmed over USB. | ~160 ฿ |
+| **GY-NEO-6M GPS** + antenna | Provides position, speed, heading and precise time, 5 times per second once configured. | ~110 ฿ |
+| **0.96" SSD1306 OLED (I2C)** | Display. High contrast, sunlight-readable, near-zero power draw. | ~85 ฿ |
+| **TP4056** (micro-USB) | LiPo battery charger: you recharge the device like a phone. | ~15 ฿ |
+| **3.7 V LiPo battery ≥1000 mAh** | Powers everything. 1500 mAh ≈ 6-8 h runtime, plenty for a track day. | ~150 ฿ |
+| **MT3608 boost converter** | Steps the battery's 3.7 V up to a stable 5 V. Without it the ESP32 + GPS would brown out (voltage too marginal). | ~20 ฿ |
+| **Slide switch** | On/off between the battery and everything else. | ~10 ฿ |
+| **12 mm waterproof push button** *(optional)* | Change pages / set the line with gloves on. The ESP32's BOOT button does the same job to get started. | ~25 ฿ |
+| **Dupont wires** + **ABS enclosure** | Prototyping wiring and protective case. | ~50 ฿ |
 
-> ⚠️ **Fils Dupont** : pour relier deux modules à pins mâles (ESP32 ↔ OLED/GPS),
-> il faut du **femelle-femelle**. Le mâle-femelle sert avec une breadboard.
-> Vérifie ce que tu as ; un lot F-F coûte ~20 ฿.
+> ⚠️ **Dupont wires**: to connect two modules that both have male pins
+> (ESP32 ↔ OLED/GPS) you need **female-female** wires. Male-female is for
+> breadboards. Check what you have; an F-F pack costs ~20 ฿.
 
-> 💡 **Pas encore de batterie ?** Une petite power bank sur le port USB-C de
-> l'ESP32 remplace toute la chaîne batterie/TP4056/MT3608 — zéro soudure
-> d'alimentation pour commencer.
+> 💡 **No battery yet?** A small power bank on the ESP32's USB-C port replaces
+> the whole battery/TP4056/MT3608 chain — zero power-related soldering to get
+> started.
 
-### Outils
+### Tools
 
-| Outil | Pour quoi faire |
+| Tool | What for |
 |---|---|
-| Fer à souder + étain | Souder les pins du GPS (livrées en vrac), les fils batterie, le montage final anti-vibrations |
-| Multimètre | **Obligatoire** : régler le MT3608 à 5 V avant de brancher l'ESP32 (il sort >20 V d'usine !) |
-| Colle chaude, mousse 3M, gaine thermo | Fixer les connecteurs et l'antenne contre les vibrations de la moto |
-| Adaptateur universel Quad Lock | Se colle au dos du boîtier → l'appareil se clipse sur le support du réservoir |
+| Soldering iron + solder | Solder the GPS header pins (shipped loose), the battery wires, and the final vibration-proof assembly |
+| Multimeter | **Mandatory**: set the MT3608 to 5 V before connecting the ESP32 (it ships outputting >20 V!) |
+| Hot glue, 3M foam tape, heat shrink | Secure connectors and the antenna against motorcycle vibrations |
+| Quad Lock universal adapter | Sticks to the back of the enclosure → the device clips onto the tank mount |
 
 ---
 
-## 2. Comment ça marche (le principe)
+## 2. How it works (the principle)
 
-Le GPS envoie une position 5 fois par seconde. Le firmware trace une **porte
-virtuelle** de 40 m de large, centrée sur la ligne de départ/arrivée,
-perpendiculaire au sens de passage :
+The GPS reports a position 5 times per second. The firmware defines a
+**virtual gate**, 40 m wide, centered on the start/finish line, perpendicular
+to the direction of travel:
 
 ```
                        │◄────── 40 m ──────►│
       ─ ─ ─ ─ ─ ─ ─ ─ ─┼────────────────────┼─ ─ ─ ─ ─ ─
                             ▲    ▲
-                       t₁ ● │    │           t₁, t₂ : deux fixes GPS successifs (0,2 s)
-                            │    │           Le franchissement exact est interpolé
-                       t₂ ● │    │           entre les deux → précision ≈ 0,1 s
-                          sens de passage
+                       t₁ ● │    │           t₁, t₂: two consecutive GPS fixes (0.2 s)
+                            │    │           The exact crossing moment is interpolated
+                       t₂ ● │    │           between them → precision ≈ 0.1 s
+                        direction of travel
 ```
 
-Quand le segment entre deux positions successives coupe la porte **dans le bon
-sens**, un tour est compté. Le moment exact du franchissement est interpolé
-entre les deux fixes (avec l'heure GPS, précise à la milliseconde) — c'est ce
-qui donne une précision bien meilleure que « 1 fix toutes les 0,2 s ».
+When the segment between two consecutive positions cuts the gate **in the
+right direction**, a lap is counted. The exact crossing moment is interpolated
+between the two fixes (using GPS time, millisecond-accurate) — that is what
+makes the precision much better than "one fix every 0.2 s".
 
-Garde-fous intégrés : temps au tour minimum 30 s, vitesse minimum 15 km/h,
-passage dans le mauvais sens ignoré → pas de faux tours dans les stands ou à
-l'arrêt sur la grille.
+Built-in guards: 30 s minimum lap time, 15 km/h minimum speed, wrong-direction
+crossings ignored → no false laps in the pits or while stopped on the grid.
 
 ---
 
-## 3. Assemblage, étape par étape
+## 3. Assembly, step by step
 
-Chaque étape a un point de contrôle ✓ : ne passe à la suivante que s'il est bon.
+Every step has a checkpoint ✓ — only move on when it passes.
 
-### Étape 0 — Installer l'environnement (sans rien câbler)
+### Step 0 — Set up the toolchain (nothing wired yet)
 
-1. Installe [VS Code](https://code.visualstudio.com/) puis l'extension
-   **PlatformIO IDE** (ou juste le CLI : `pip install platformio`).
-2. Clone ce repo et ouvre le dossier.
-3. Branche l'ESP32 en USB.
+1. Install [VS Code](https://code.visualstudio.com/) and the **PlatformIO IDE**
+   extension (or just the CLI: `pip install platformio`).
+2. Clone this repo and open the folder.
+3. Plug the ESP32 in over USB.
 
-✓ *Contrôle :* `pio device list` (ou l'icône PlatformIO) montre un port
-`/dev/cu.usbserial-*` ou `/dev/cu.wchusbserial-*` (macOS ; le pilote CH340 est
-intégré aux macOS récents).
+✓ *Checkpoint:* `pio device list` (or the PlatformIO icon) shows a port like
+`/dev/cu.usbserial-*` or `/dev/cu.wchusbserial-*` (macOS; the CH340 driver is
+built into recent macOS versions).
 
-### Étape 1 — L'écran, en mode simulation
+### Step 1 — The display, in simulation mode
 
-Câble l'OLED sur l'ESP32 (4 fils, ESP32 **éteint**) :
+Wire the OLED to the ESP32 (4 wires, ESP32 **powered off**):
 
 | OLED | ESP32 |
 |---|---|
@@ -105,22 +103,22 @@ Câble l'OLED sur l'ESP32 (4 fils, ESP32 **éteint**) :
 | SDA | GPIO21 |
 | SCL | GPIO22 |
 
-Flashe le **mode simulation** — l'appareil roule sur un circuit virtuel, sans
-GPS :
+Flash the **simulation mode** — the device drives around a virtual track, no
+GPS needed:
 
 ```bash
 pio run -e esp32dev-sim -t upload
 ```
 
-✓ *Contrôle :* écran d'accueil, puis le chrono tourne tout seul ; toutes les
-~40 s l'écran s'inverse avec un temps au tour. Le bouton **BOOT** change de
-page (appui court) et remet la session à zéro (appui long sur la page SESSION).
-C'est exactement le comportement qu'on aura sur la piste.
+✓ *Checkpoint:* splash screen, then the timer runs by itself; roughly every
+40 s the screen inverts with a lap time. The **BOOT** button switches pages
+(short press) and resets the session (long press on the SESSION page). This is
+exactly the behavior you will get on track.
 
-### Étape 2 — Le GPS
+### Step 2 — The GPS
 
-Toujours éteint, câble le GPS (soude d'abord sa rangée de pins si elle est
-livrée en vrac) :
+Still powered off, wire the GPS (solder its header pins first if they shipped
+loose):
 
 | GPS NEO-6M | ESP32 |
 |---|---|
@@ -129,184 +127,185 @@ livrée en vrac) :
 | TX | GPIO16 |
 | RX | GPIO17 |
 
-Flashe le firmware réel et ouvre la console :
+Flash the real firmware and open the serial console:
 
 ```bash
 pio run -e esp32dev -t upload
 pio device monitor
 ```
 
-Va **dehors** (ou près d'une fenêtre, antenne vers le ciel) et attends 1 à
-5 min pour le premier fix (les suivants prennent quelques secondes).
+Go **outside** (or near a window, antenna facing the sky) and allow 1-5 min
+for the first fix (later fixes take seconds).
 
-✓ *Contrôle :* la console affiche `[GPS] configure : 57600 bauds, 200 ms/mesure` ;
-sur la page GPS de l'écran : `FIX`, `5.0Hz`, 7+ satellites, HDOP < 2, et ta
-position. La page RACE affiche ta vitesse.
+✓ *Checkpoint:* the console prints `[GPS] configured: 57600 baud, 200 ms/measurement`;
+the GPS page shows `FIX`, `5.0Hz`, 7+ satellites, HDOP < 2, and your position.
+The RACE page shows your speed.
 
-### Étape 3 — Test grandeur nature (à vélo ou en scooter)
+### Step 3 — Full-scale test (bicycle or scooter)
 
-1. Choisis une boucle (parking, pâté de maisons).
-2. Page LIGNE → roule à plus de 10 km/h → **appui long** en passant sur ta
-   « ligne » imaginaire → `LIGNE DEFINIE !`.
-3. Fais des tours (il faut des tours > 30 s et passer la ligne à > 15 km/h).
+1. Pick a loop (parking lot, city block).
+2. LINE page → ride faster than 10 km/h → **long press** while passing over
+   your imaginary "line" → `LINE SET!`.
+3. Do laps (laps must be > 30 s and cross the line at > 15 km/h).
 
-✓ *Contrôle :* chaque passage flashe le temps du tour ; la page SESSION liste
-les tours ; `d` dans la console série sort le CSV.
+✓ *Checkpoint:* every pass flashes the lap time; the SESSION page lists the
+laps; `d` in the serial console dumps the CSV.
 
-### Étape 4 — L'alimentation batterie
+### Step 4 — Battery power
 
-⚠️ *L'unique étape où on peut griller quelque chose. Multimètre obligatoire.*
+⚠️ *The only step where you can fry something. Multimeter mandatory.*
 
-1. Soude la batterie sur le TP4056 : `B+`/`B-` (respecte la polarité !).
-2. Soude `OUT+` du TP4056 → interrupteur → `IN+` du MT3608, et `OUT-` → `IN-`.
-3. **Avant de brancher l'ESP32** : allume, mesure la sortie du MT3608 au
-   multimètre et tourne la petite vis du potentiomètre jusqu'à lire
-   **5,0-5,2 V** (compte plusieurs tours de vis, c'est normal).
-4. Éteins, soude `OUT+` du MT3608 → **VIN** de l'ESP32 et `OUT-` → **GND**.
+1. Solder the battery to the TP4056: `B+`/`B-` (mind the polarity!).
+2. Solder TP4056 `OUT+` → switch → MT3608 `IN+`, and `OUT-` → `IN-`.
+3. **Before connecting the ESP32**: power on, measure the MT3608 output with
+   the multimeter and turn the little potentiometer screw until it reads
+   **5.0-5.2 V** (it takes many turns, that's normal).
+4. Power off, solder MT3608 `OUT+` → ESP32 **VIN** and `OUT-` → **GND**.
 
 ```
-LiPo ──► TP4056 ──► interrupteur ──► MT3608 (réglé 5 V) ──► VIN + GND ESP32
+LiPo ──► TP4056 ──► switch ──► MT3608 (set to 5 V) ──► ESP32 VIN + GND
           ▲
      micro-USB = recharge
 ```
 
-✓ *Contrôle :* tout fonctionne sur batterie, sans câble USB. La recharge se
-fait par le micro-USB du TP4056 (LED rouge = charge, bleue/verte = chargé).
-On peut flasher par USB avec la batterie branchée, pas de conflit.
+✓ *Checkpoint:* everything runs on battery, no USB cable. Recharge through the
+TP4056's micro-USB (red LED = charging, blue/green = full). Flashing over USB
+with the battery connected is fine, no conflict.
 
-### Étape 5 — Boîtier et montage moto
+### Step 5 — Enclosure and bike mounting
 
-1. Perce le boîtier : fenêtre écran (film plastique ou plexi collé derrière),
-   passage micro-USB (recharge), trou du bouton étanche (GPIO25 → bouton → GND),
-   interrupteur.
-2. **Antenne GPS vers le ciel**, rien de métallique au-dessus, montée sur
-   mousse 3M (antivibration). Le module GPS peut rester dans le boîtier si le
-   couvercle est en plastique.
-3. Colle chaude sur tous les connecteurs Dupont (ou soude-les : plus fiable
-   sur une moto qui vibre), silicone sur les passages de câbles.
-4. Adaptateur universel Quad Lock collé/vissé au dos → clipse sur le réservoir.
+1. Cut the enclosure: display window (plastic film or acrylic glued behind),
+   micro-USB opening (recharging), waterproof button hole (GPIO25 → button →
+   GND), switch hole.
+2. **GPS antenna facing the sky**, nothing metallic above it, mounted on 3M
+   foam tape (anti-vibration). The GPS module can stay inside the box if the
+   lid is plastic.
+3. Hot glue on every Dupont connector (or solder them: more reliable on a
+   vibrating motorcycle), silicone on cable pass-throughs.
+4. Quad Lock universal adapter glued/screwed to the back → clips onto the tank
+   mount.
 
-✓ *Contrôle final :* secoue le boîtier — rien ne bouge, rien ne sonne creux.
+✓ *Final checkpoint:* shake the box — nothing moves, nothing rattles.
 
-### Étape 6 — Le jour du track day
+### Step 6 — Track day
 
-1. Allume l'appareil dans le paddock, ciel dégagé, 2-3 min avant d'entrer.
-2. Premier roulage sur ce circuit : page LIGNE, **appui long en franchissant
-   la vraie ligne** pendant le tour de reconnaissance. C'est mémorisé pour
-   toutes les sessions et sorties suivantes.
-3. Roule. Tout est automatique — ne touche plus à rien.
-4. Le soir : branche l'USB, `pio device monitor`, tape `d`, copie tes temps
-   (heures en UTC, Bangkok = UTC+7).
+1. Power on in the paddock, clear sky view, 2-3 min before going out.
+2. First time on this track: LINE page, **long press while crossing the actual
+   line** during the sighting lap. It is stored for every following session
+   and track day.
+3. Ride. Everything is automatic — don't touch anything.
+4. In the evening: plug in USB, `pio device monitor`, type `d`, copy your
+   times (times are UTC; Bangkok = UTC+7).
 
 ---
 
-## 4. Utilisation — référence rapide
+## 4. Usage — quick reference
 
-### Pages (appui court = page suivante)
+### Pages (short press = next page)
 
-| Page | Contenu | Appui long |
+| Page | Content | Long press |
 |---|---|---|
-| **RACE** | tour en cours (gros), vitesse, sats, Dernier/Meilleur | — |
-| **SESSION** | derniers tours (meilleur marqué `*`), vmax session | remise à zéro session |
-| **GPS** | fix, satellites, HDOP, cadence Hz, position | — |
-| **LIGNE** | état et distance de la ligne | définir la ligne ici |
+| **RACE** | current lap (big), speed, sats, Last/Best | — |
+| **SESSION** | recent laps (best marked `*`), session vmax | reset session |
+| **GPS** | fix, satellites, HDOP, rate Hz, position | — |
+| **LINE** | line status and distance | set the line here |
 
-Quand le chrono tourne, retour automatique sur RACE après 15 s. Les appuis
-longs sont désactivés sur RACE et GPS pour éviter les fausses manips en
-roulant.
+While the timer is running, the display auto-returns to RACE after 15 s. Long
+presses are disabled on RACE and GPS to prevent accidental actions while
+riding.
 
-### Commandes série (115200 bauds)
+### Serial commands (115200 baud)
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `h` | aide |
-| `i` | infos : ligne, session, record, état GPS |
-| `d` | dump du journal CSV de tous les tours |
-| `x` | efface le journal CSV |
-| `r` | remise à zéro de la session |
-| `z` | efface le record absolu |
-| `L <lat> <lon> <cap> [demi-largeur]` | définit la ligne à la main (ex. depuis Google Maps) |
+| `h` | help |
+| `i` | info: line, session, all-time best, GPS state |
+| `d` | dump the CSV log of every lap |
+| `x` | erase the CSV log |
+| `r` | reset the session |
+| `z` | erase the all-time best |
+| `L <lat> <lon> <hdg> [half-width]` | set the line manually (e.g. from Google Maps) |
 
-### Réglages principaux (`src/config.h`)
+### Main settings (`src/config.h`)
 
-| Constante | Défaut | Rôle |
+| Constant | Default | Role |
 |---|---|---|
-| `LINE_HALF_WIDTH_M` | 20 m | demi-largeur de la porte de détection |
-| `MIN_LAP_MS` | 30 s | temps au tour minimum (anti-double détection) |
-| `MIN_CROSS_SPEED_KMH` | 15 km/h | vitesse mini pour valider un passage |
-| `GPS_MEAS_RATE_MS` | 200 ms | cadence GPS (5 Hz = max du NEO-6M) |
-| `PIN_*` | — | brochage complet |
+| `LINE_HALF_WIDTH_M` | 20 m | half-width of the detection gate |
+| `MIN_LAP_MS` | 30 s | minimum lap time (double-detection guard) |
+| `MIN_CROSS_SPEED_KMH` | 15 km/h | minimum speed for a valid crossing |
+| `GPS_MEAS_RATE_MS` | 200 ms | GPS rate (5 Hz = NEO-6M maximum) |
+| `PIN_*` | — | full pinout |
 
-Écran monté tête en bas ? `U8G2_R0` → `U8G2_R2` dans `src/display.h`.
+Display mounted upside down? Change `U8G2_R0` to `U8G2_R2` in `src/display.h`.
 
 ---
 
-## 5. Le code, en bref
+## 5. The code, briefly
 
 ```
 src/
-├── main.cpp      Chef d'orchestre : boucle principale, boutons, commandes
-│                 série, mode simulation
-├── config.h      Tous les réglages et le brochage
-├── gps.cpp/.h    Pilote le NEO-6M : détection auto du baud, configuration
-│                 UBX (5 Hz, phrases inutiles coupées), production de "fixes"
-│                 propres via TinyGPS++
-├── laptimer.cpp/.h  L'algorithme : géométrie du franchissement de porte,
-│                 interpolation du temps exact, tours/meilleur/deltas
-├── display.cpp/.h   Les 4 pages OLED + flash de fin de tour (lib U8g2)
-├── storage.cpp/.h   Persistance : ligne + record en NVS, journal CSV en
-│                 LittleFS (flash interne)
-└── button.cpp/.h    Anti-rebond, distinction appui court / appui long
+├── main.cpp      Orchestrator: main loop, buttons, serial commands,
+│                 simulation mode
+├── config.h      Every setting and the pinout
+├── gps.cpp/.h    Drives the NEO-6M: automatic baud detection, UBX
+│                 configuration (5 Hz, useless sentences disabled), clean
+│                 "fix" snapshots via TinyGPS++
+├── laptimer.cpp/.h  The algorithm: gate-crossing geometry, exact-time
+│                 interpolation, laps/best/deltas
+├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
+├── storage.cpp/.h   Persistence: line + best in NVS, CSV log in LittleFS
+│                 (internal flash)
+└── button.cpp/.h    Debouncing, short vs long press detection
 ```
 
-Les points intéressants :
+The interesting parts:
 
-- **`gps.cpp`** parle au NEO-6M en binaire u-blox (UBX) au démarrage : il
-  teste plusieurs vitesses jusqu'à l'entendre, le passe à 57600 bauds, coupe
-  les phrases NMEA inutiles (ne garde que RMC + GGA) et monte la cadence à
-  5 Hz. Si le module ne répond pas, tout marche quand même en mode dégradé 1 Hz.
-- **`laptimer.cpp`** travaille en coordonnées locales (mètres autour de la
-  ligne). Un tour = le segment entre deux fixes passe de « avant » à « après »
-  la ligne, dans la porte, dans le bon sens. Le temps exact est interpolé
-  linéairement entre les heures GPS des deux fixes — d'où la précision
-  d'environ un dixième malgré le 5 Hz.
-- **Deux environnements de build** : `esp32dev` (réel) et `esp32dev-sim`
-  (circuit virtuel intégré — même code de chrono, positions générées — pour
-  tester sans GPS).
+- **`gps.cpp`** talks to the NEO-6M in u-blox binary (UBX) at boot: it probes
+  several baud rates until it hears the module, switches it to 57600 baud,
+  disables the NMEA sentences it doesn't need (keeps RMC + GGA only) and
+  raises the rate to 5 Hz. If the module doesn't answer, everything still
+  works in a degraded 1 Hz mode.
+- **`laptimer.cpp`** works in local coordinates (meters around the line). A
+  lap = the segment between two fixes moves from "before" to "past" the line,
+  inside the gate, in the right direction. The exact time is linearly
+  interpolated between the GPS times of both fixes — hence roughly
+  tenth-of-a-second precision despite the 5 Hz rate.
+- **Two build environments**: `esp32dev` (real) and `esp32dev-sim` (built-in
+  virtual track — same timing code, generated positions — to test without a
+  GPS).
 
 ---
 
-## 6. Dépannage
+## 6. Troubleshooting
 
-| Symptôme | Cause probable |
+| Symptom | Likely cause |
 |---|---|
-| Écran noir | SDA/SCL inversés, ou module en adresse 0x3D (rare) : ajouter `u8g2_.setI2CAddress(0x3D * 2);` dans `Display::begin()` |
-| Pas de port série | Câble USB « charge seule » (prends un câble data), ou pilote CH340 manquant (macOS récent : intégré) |
-| `pas de NMEA detecte` dans la console | TX/RX inversés (croiser les fils), ou GPS mal alimenté |
-| Pas de fix au bout de 10 min | Antenne sans vue du ciel (béton, métal au-dessus) ; premier démarrage à froid = jusqu'à 5 min dehors |
-| Page GPS affiche ~1.0Hz | La config 5 Hz n'est pas passée : vérifier le câble RX (GPIO17 → RX du GPS), redémarrer dehors |
-| Redémarrages aléatoires sur batterie | MT3608 mal réglé ou batterie vide — mesurer la tension sur VIN |
-| Tours non détectés | Ligne définie au mauvais endroit/mauvais cap (redéfinir), ou tours < 30 s (`MIN_LAP_MS`) |
+| Black screen | SDA/SCL swapped, or module at address 0x3D (rare): add `u8g2_.setI2CAddress(0x3D * 2);` in `Display::begin()` |
+| No serial port | Charge-only USB cable (use a data cable), or missing CH340 driver (built into recent macOS) |
+| `no NMEA detected` in the console | TX/RX swapped (cross the wires), or GPS not powered |
+| No fix after 10 min | Antenna without sky view (concrete, metal above); first cold start = up to 5 min outdoors |
+| GPS page shows ~1.0Hz | The 5 Hz configuration didn't get through: check the RX wire (GPIO17 → GPS RX), reboot outdoors |
+| Random reboots on battery | MT3608 badly adjusted or battery empty — measure the voltage on VIN |
+| Laps not detected | Line set at the wrong spot/heading (set it again), or laps < 30 s (`MIN_LAP_MS`) |
 
 ---
 
-## 7. Évolutions possibles (v2)
+## 7. Possible upgrades (v2)
 
-- GPS u-blox **M8N/M10** (10-25 Hz, multi-constellations) : remplaçant direct,
-  même câblage, même code → précision nettement meilleure (~200-400 ฿).
-- Diffusion **BLE vers RaceChrono** (protocole « RaceChrono DIY ») : analyse
-  pro des sessions sur téléphone, secteurs, traces.
-- **Delta prédictif** en temps réel (comparaison continue avec le meilleur tour).
-- Écran OLED **2,42"** SSD1309 : même bibliothèque, une ligne à changer.
-- Jauge batterie (pont diviseur 2×100 kΩ vers une entrée ADC).
+- u-blox **M8N/M10** GPS (10-25 Hz, multi-constellation): drop-in replacement,
+  same wiring, same code → noticeably better precision (~200-400 ฿).
+- **BLE streaming to RaceChrono** ("RaceChrono DIY" protocol): professional
+  session analysis on your phone, sectors, traces.
+- Real-time **predictive delta** (continuous comparison against your best lap).
+- **2.42" SSD1309 OLED**: same library, a one-line change.
+- Battery gauge (2×100 kΩ voltage divider into an ADC pin).
 
 ---
 
-## Sécurité
+## Safety
 
-Fixe l'appareil solidement (une pièce qui se détache à 150 km/h est un
-projectile), ne le manipule jamais en roulant — tout est automatique une fois
-la ligne définie — et vérifie le règlement du circuit concernant les appareils
-embarqués.
+Mount the device firmly (anything that comes loose at 150 km/h is a
+projectile), never fiddle with it while riding — everything is automatic once
+the line is set — and check the track's rules about on-board devices.
 
-*Projet DIY à ~600 ฿, aucune garantie — amuse-toi et progresse en sécurité.* 🏁
+*A ~600 ฿ DIY project, no warranty of any kind — have fun and stay safe.* 🏁

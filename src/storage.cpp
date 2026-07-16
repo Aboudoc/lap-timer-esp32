@@ -5,8 +5,8 @@ static const char* kCsvPath = "/laps.csv";
 
 void Storage::begin() {
   prefs_.begin("laptimer", false);
-  if (!LittleFS.begin(true)) {  // true = formate au premier demarrage
-    Serial.println("[FS] erreur d'initialisation LittleFS");
+  if (!LittleFS.begin(true)) {  // true = format on first boot
+    Serial.println("[FS] LittleFS init error");
   }
 }
 
@@ -36,7 +36,7 @@ void Storage::appendLap(const char* dateStr, uint32_t crossMsOfDay, int lapIdx,
                         uint32_t lapMs, float maxKmh) {
   File f = LittleFS.open(kCsvPath, FILE_APPEND);
   if (!f) return;
-  if (f.size() == 0) f.println("date,heure_utc,tour,temps_s,vmax_kmh");
+  if (f.size() == 0) f.println("date,time_utc,lap,time_s,vmax_kmh");
   unsigned long sec = crossMsOfDay / 1000UL;
   f.printf("%s,%02lu:%02lu:%02lu.%03lu,%d,%lu.%03lu,%.1f\n",
            dateStr, sec / 3600UL, (sec / 60UL) % 60UL, sec % 60UL,
@@ -50,7 +50,7 @@ void Storage::appendLap(const char* dateStr, uint32_t crossMsOfDay, int lapIdx,
 void Storage::dumpCsv(Stream& out) {
   File f = LittleFS.open(kCsvPath, FILE_READ);
   if (!f) {
-    out.println("(journal vide)");
+    out.println("(log empty)");
     return;
   }
   uint8_t buf[128];
