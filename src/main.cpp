@@ -26,7 +26,7 @@
 #include "lora_link.h"
 #include "pitlink_proto.h"
 
-static const char* VERSION = "v1.7";
+static const char* VERSION = "v1.8";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
@@ -317,7 +317,50 @@ static void pitDeleteTrack(uint8_t id) {
   }
 }
 static const char* pitActiveName() { return activeTrackName; }
-static uint32_t pitActiveBest() { return lapTimer.allTimeBestMs(); }
+
+static void pitExit() {
+  storage.setPitFlag(false);
+  ESP.restart();
+}
+
+// Live state for the web app's /api/status.
+static void buildStatusJson(char* buf, size_t n) {
+  uint32_t now = millis();
+  GpsView g = buildGpsView();
+  const EcuData& e = currentEcu();
+  const ImuData& m = currentImu();
+  const TireData& ti = currentTires();
+  char esc[36];
+  size_t o = 0;
+  for (const char* p = activeTrackName; *p && o + 2 < sizeof(esc); p++) {
+    if (*p == '"' || *p == '\\') esc[o++] = '\\';
+    esc[o++] = *p;
+  }
+  esc[o] = 0;
+  snprintf(buf, n,
+           "{\"version\":\"%s\",\"track\":\"%s\",\"session\":%d,\"laps\":%d,"
+           "\"timing\":%s,\"current\":%lu,\"last\":%lu,\"best\":%lu,"
+           "\"allTime\":%lu,\"tb\":%lu,\"delta\":%ld,\"hasDelta\":%s,"
+           "\"speed\":%.0f,\"sats\":%d,\"fix\":%s,"
+           "\"lean\":%.0f,\"leanOk\":%s,"
+           "\"tf\":%.0f,\"tr\":%.0f,\"tfOk\":%s,\"trOk\":%s,"
+           "\"rpm\":%d,\"coolant\":%.0f,\"ecu\":%s}",
+           VERSION, esc, lapTimer.sessionIndex(), lapTimer.lapCount(),
+           lapTimer.timing() ? "true" : "false",
+           (unsigned long)lapTimer.currentLapMs(now),
+           (unsigned long)lapTimer.lastLapMs(),
+           (unsigned long)lapTimer.bestLapMs(),
+           (unsigned long)lapTimer.allTimeBestMs(),
+           (unsigned long)lapTimer.theoreticalBestMs(),
+           (long)lapTimer.predDeltaMs(),
+           lapTimer.hasPredDelta() ? "true" : "false",
+           g.speedKmh, g.sats, g.hasFix ? "true" : "false",
+           m.present ? m.leanDeg : 0, m.present ? "true" : "false",
+           ti.frontOk ? ti.frontC : 0, ti.rearOk ? ti.rearC : 0,
+           ti.frontOk ? "true" : "false", ti.rearOk ? "true" : "false",
+           e.link ? e.rpm : 0, e.link ? e.coolantC : 0,
+           e.link ? "true" : "false");
+}
 
 // ================================================
 
@@ -368,7 +411,7 @@ void setup() {
 
   if (pitActive) {
     PitActions actions{pitSelectTrack, pitRenameTrack, pitDeleteTrack,
-                       pitActiveName, pitActiveBest};
+                       pitActiveName, buildStatusJson, pitExit};
     pit.begin(&storage, actions, VERSION);
     display.notify("WIFI 192.168.4.1", 5000);
   } else {

@@ -10,12 +10,14 @@ struct PitActions {
   void (*renameTrack)(uint8_t id, const char* name);
   void (*deleteTrack)(uint8_t id);
   const char* (*activeTrackName)();
-  uint32_t (*activeBestMs)();
+  void (*statusJson)(char* buf, size_t n);  // live state for /api/status
+  void (*exitPit)();                        // clear the flag and reboot
 };
 
-// Pit mode: WiFi hotspot + embedded web app. Download the lap log, manage
-// tracks, and flash firmware updates (OTA) from a phone browser — no cable,
-// no computer. Entered/left by a long press on the GPS page (reboots).
+// Pit mode: WiFi hotspot + embedded web app (installable on the phone's home
+// screen). Live dashboard, session browser with charts, lap log download,
+// track manager and OTA firmware updates — no cable, no computer.
+// Entered/left by a long press on the GPS page (reboots).
 class PitMode {
  public:
   void begin(Storage* storage, const PitActions& actions, const char* version);
@@ -23,8 +25,7 @@ class PitMode {
 
  private:
   void sendPage(const String& body);
-  void handleRoot();
-  void handleTracks();
+  void handleTracksJson();
   void handleTrackAction();
 
   WebServer  server_{80};

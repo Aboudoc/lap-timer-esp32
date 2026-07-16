@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include <Update.h>
 #include "laptimer.h"
+#include "web_app.h"
+#include "web_icon.h"
 
 static const char* kCss =
     "<style>body{font-family:sans-serif;margin:16px;background:#111;color:#eee;max-width:480px}"
@@ -19,40 +21,35 @@ void PitMode::sendPage(const String& body) {
   server_.send(200, "text/html", page);
 }
 
-void PitMode::handleRoot() {
-  char tm[12];
-  uint32_t best = act_.activeBestMs ? act_.activeBestMs() : 0;
-  fmtLapTime(tm, sizeof(tm), best, true);
-  String b = "<div class=card>Firmware " + String(version_) +
-             "<br>Active track: <b>" + String(act_.activeTrackName ? act_.activeTrackName() : "-") +
-             "</b><br>All-time best: <b>" + (best ? String(tm) : String("-")) + "</b></div>" +
-             "<div class=card><a href=/laps.csv>&#11015; Download lap log (CSV)</a>"
-             "<form method=post action=/clear onsubmit='return confirm(\"Erase the lap log?\")'>"
-             "<button class=danger>Erase lap log</button></form></div>" +
-             "<div class=card><a href=/tracks>Manage tracks</a></div>" +
-             "<div class=card><a href=/update>Firmware update (OTA)</a></div>";
-  sendPage(b);
+// Minimal JSON string escaping (quotes, backslashes, control chars).
+static void jsonEscape(const char* in, char* out, size_t n) {
+  size_t o = 0;
+  for (; *in && o + 2 < n; in++) {
+    if (*in == '"' || *in == '\\') {
+      out[o++] = '\\';
+      out[o++] = *in;
+    } else if ((uint8_t)*in >= 0x20) {
+      out[o++] = *in;
+    }
+  }
+  out[o] = 0;
 }
 
-void PitMode::handleTracks() {
+void PitMode::handleTracksJson() {
   TrackMeta list[MAX_TRACKS];
   int cnt = st_->listTracks(list, MAX_TRACKS);
-  String b = "<p><a href=/>&larr; back</a></p>";
-  if (cnt == 0) b += "<div class=card>No stored track yet.</div>";
-  char tm[12];
+  const char* active = act_.activeTrackName ? act_.activeTrackName() : "";
+  String out = "[";
+  char esc[36], item[128];
   for (int i = 0; i < cnt; i++) {
-    fmtLapTime(tm, sizeof(tm), list[i].bestMs, true);
-    b += "<div class=card><form method=post action=/track>"
-         "<input type=hidden name=id value=" + String(list[i].id) + ">"
-         "<input name=name maxlength=15 value=\"" + String(list[i].name) + "\"> "
-         "best " + (list[i].bestMs ? String(tm) : String("-")) +
-         "<br><button name=action value=select>Select</button>"
-         "<button name=action value=rename>Rename</button>"
-         "<button name=action value=del class=danger "
-         "onclick='return confirm(\"Delete this track?\")'>Delete</button>"
-         "</form></div>";
+    jsonEscape(list[i].name, esc, sizeof(esc));
+    snprintf(item, sizeof(item), "%s{\"id\":%u,\"name\":\"%s\",\"best\":%lu,\"active\":%s}",
+             i ? "," : "", list[i].id, esc, (unsigned long)list[i].bestMs,
+             strcmp(list[i].name, active) == 0 ? "true" : "false");
+    out += item;
   }
-  sendPage(b);
+  out += "]";
+  server_.send(200, "application/json", out);
 }
 
 void PitMode::handleTrackAction() {
@@ -65,8 +62,7 @@ void PitMode::handleTrackAction() {
   } else if (action == "del" && act_.deleteTrack) {
     act_.deleteTrack(id);
   }
-  server_.sendHeader("Location", "/tracks");
-  server_.send(303);
+  server_.send(200, "text/plain", "ok");
 }
 
 void PitMode::begin(Storage* storage, const PitActions& actions, const char* version) {
@@ -77,9 +73,27 @@ void PitMode::begin(Storage* storage, const PitActions& actions, const char* ver
   WiFi.mode(WIFI_AP);
   WiFi.softAP(BT_DEVICE_NAME, PIT_WIFI_PASS);
 
-  server_.on("/", HTTP_GET, [this]() { handleRoot(); });
-  server_.on("/tracks", HTTP_GET, [this]() { handleTracks(); });
+  server_.on("/", HTTP_GET, [this]() {
+    server_.send_P(200, "text/html", WEBAPP_HTML);
+  });
+  server_.on("/manifest.json", HTTP_GET, [this]() {
+    server_.send_P(200, "application/json", MANIFEST_JSON);
+  });
+  server_.on("/apple-touch-icon.png", HTTP_GET, [this]() {
+    server_.send_P(200, "image/png", (const char*)WEB_ICON_PNG, WEB_ICON_PNG_LEN);
+  });
+  server_.on("/api/status", HTTP_GET, [this]() {
+    char b[512] = "{}";
+    if (act_.statusJson) act_.statusJson(b, sizeof(b));
+    server_.send(200, "application/json", b);
+  });
+  server_.on("/api/tracks", HTTP_GET, [this]() { handleTracksJson(); });
   server_.on("/track", HTTP_POST, [this]() { handleTrackAction(); });
+  server_.on("/exitpit", HTTP_POST, [this]() {
+    server_.send(200, "text/plain", "rebooting");
+    delay(300);
+    if (act_.exitPit) act_.exitPit();
+  });
 
   server_.on("/laps.csv", HTTP_GET, [this]() {
     File f = st_->openCsvRead();
@@ -93,8 +107,7 @@ void PitMode::begin(Storage* storage, const PitActions& actions, const char* ver
 
   server_.on("/clear", HTTP_POST, [this]() {
     st_->clearCsv();
-    server_.sendHeader("Location", "/");
-    server_.send(303);
+    server_.send(200, "text/plain", "ok");
   });
 
   server_.on("/update", HTTP_GET, [this]() {

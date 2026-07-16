@@ -95,17 +95,22 @@ Every lap is appended to `/laps.csv` in internal flash:
 (serial command `d`) or over WiFi (pit mode) — then open it in any
 spreadsheet. Survives power-off; ~years of track days fit in flash.
 
-### 8. Pit mode: WiFi web app + OTA updates
+### 8. Pit mode: the phone web app + OTA updates
 Long-press on the GPS page: the device reboots as a WiFi hotspot
-(**LapTimer ESP32** / password **laptimer**) serving a web app at
-**http://192.168.4.1**:
+(**LapTimer ESP32** / password **laptimer**) serving a full web app at
+**http://192.168.4.1** — add it to the iPhone home screen once and it opens
+full-screen with its own checkered-flag icon, like a native app:
 
-- download or erase the lap log,
-- list / select / rename / delete tracks,
-- **flash a firmware update from the browser** (upload `firmware.bin`).
+- **Live tab**: real-time dashboard (delta/current lap in big, speeds, temps)
+  — a phone on the hotspot doubles as a pit board,
+- **Sessions tab**: per-session lap-time charts, best/average/vmax/lean and
+  the full lap table, straight from the on-device log,
+- **Tracks tab**: select / rename / delete stored tracks,
+- **System tab**: CSV download (or one-tap sync via an iOS Shortcut — recipe
+  in the README), **OTA firmware update from the browser**, remote exit.
 
 Once the box is sealed and mounted on the bike, you never need the USB cable
-again. Long-press the GPS page again to return to normal mode.
+again. No app store, no account, no backend: the app lives inside the device.
 
 ### 9. Phone app streaming (Bluetooth)
 The device can feed a lap-timing app in parallel with the on-board timer:

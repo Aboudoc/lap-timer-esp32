@@ -379,19 +379,32 @@ On the RACE top bar, `B` in front of the satellite count means a phone app is
 connected over Bluetooth, `W` means the pit-mode hotspot is up. The screen
 dims by itself after 1 minute without movement (any button or riding wakes it).
 
-### Pit mode: WiFi web app + firmware updates
+### Pit mode: the web app (phone) + firmware updates
 
 Long-press on the GPS page (or serial command `w`): the device reboots into a
 WiFi hotspot — network **"LapTimer ESP32"**, password **`laptimer`**, then
-open **http://192.168.4.1** in the phone browser:
+open **http://192.168.4.1** in the phone browser. On iPhone, tap Share →
+**"Add to Home Screen"** once: you get a full-screen app with its own
+checkered-flag icon.
 
-- download or erase the lap log (CSV),
-- list / select / rename / delete tracks,
-- **flash a new firmware over the air**: menu *Firmware update*, upload
-  `.pio/build/esp32dev/firmware.bin` — no USB cable, no computer at the track.
+Four tabs:
 
-Bluetooth is off while pit mode is active. Long-press the GPS page again to
-reboot back into normal mode.
+- **Live** — real-time dashboard (the timer keeps running in pit mode):
+  current lap or predictive delta in big (green when you're up), last/best/
+  theoretical best, speed, sats, lean, tire temps, RPM/coolant. A phone on
+  the hotspot = a pit board without extra hardware.
+- **Sessions** — every session from the lap log: lap-time chart, best/average,
+  vmax, max lean, and the full lap table (times, speeds, lean, tire temps).
+- **Tracks** — select / rename / delete stored tracks.
+- **System** — download or erase the CSV, **OTA firmware update** (upload
+  `.pio/build/esp32dev/firmware.bin`, no cable), exit WiFi mode remotely.
+
+**One-tap sync on iPhone:** create a Shortcut once — *Shortcuts → + → Get
+Contents of URL* = `http://192.168.4.1/laps.csv` *→ Save File* (iCloud
+Drive). One tap in the pits and your whole lap history lands in Files.
+
+Bluetooth is off while pit mode is active. Long-press the GPS page (or use
+the System tab) to reboot back into normal mode.
 
 While the timer is running, the display auto-returns to RACE after 15 s. Long
 presses are disabled on RACE and GPS to prevent accidental actions while
@@ -509,8 +522,10 @@ src/
 ├── pitlink_proto.h  Radio packet shared by bike and pit box — unit-tested
 ├── lora_link.cpp/.h Bike-side LoRa transmitter (async, quiet probing)
 ├── pitbox_main.cpp  The coach-side receiver firmware (env: pitbox)
-├── pit.cpp/.h    Pit mode: WiFi hotspot, embedded web app (lap log, track
-│                 management) and OTA firmware updates
+├── pit.cpp/.h    Pit mode: WiFi hotspot, JSON API and OTA firmware updates
+├── web_app.h     The embedded web app (single self-contained page: live
+│                 dashboard, session charts, track manager — installable PWA)
+├── web_icon.h    Generated home-screen icon (checkered flag PNG)
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
 ├── storage.cpp/.h   Persistence in LittleFS: one file per track (line,
 │                 records, reference trace) + the CSV lap log
