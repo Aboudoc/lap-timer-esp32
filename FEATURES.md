@@ -47,6 +47,13 @@ stored track within 5 km is loaded automatically — arrive at MSP, turn the
 device on, it says `TRACK MSP` and your records are armed. Rename, select or
 delete tracks from the pit-mode web app or the serial console (`T`, `N`).
 
+### 6d. Tire temperatures (2× MLX90614 IR)
+Two contactless IR sensors (front fender, tail) read the tread temperature
+live: TIRES page, per-lap averages in the CSV (`tire_f_c`, `tire_r_c`) and
+RaceChrono channels (PID 0x102). Know when your tires are in their window,
+how many warm-up laps they need, and whether they overheat late in a session.
+On a dedicated I2C bus so the long cable runs never disturb the display.
+
 ### 6c. Lean angle & G-forces (MPU6050)
 A 50 ฿ GY-521 IMU on the I2C bus adds the **live lean angle** (with L/R side),
 the **max lean per lap on each side** and the **braking G peak** — on the LEAN
@@ -157,6 +164,7 @@ work remains once the part is on the desk.
 |---|---|---|---|
 | **u-blox NEO-M8N or M10 GPS module** | 250-400 ฿ | 10-25 Hz fixes → lap precision from ~0.2 s down to **~0.05 s**, sharper predictive delta | ✅ Works as-is: same wiring, same UBX config — just raise `GPS_MEAS_RATE_MS` |
 | **L9637D + 510Ω/10kΩ + 4-pin plug** | ~150 ฿ | **ECU telemetry**: RPM, throttle, gear, coolant → screen + RaceChrono channels | ✅ Firmware ready (v1.4) — wire it and it links (README Step 7) |
+| **MLX90614 IR sensor ×2** | 300-500 ฿ | **Tire temperatures** front/rear: live page, per-lap CSV averages, RaceChrono | ✅ Firmware ready (v1.6) — wire + re-address one (README Step 9) |
 | **MPU6050 IMU** (accelerometer + gyro) | 40-80 ฿ | **Lean angle** display and per-lap max, G-force logging | ✅ Firmware ready (v1.5) — plug it on the I2C bus, calibrate with `g` |
 | **2.42" SSD1309 OLED** | 150-250 ฿ | Twice the screen: bigger digits, delta readable further into the fairing | ✅ One line to change (U8g2 constructor) |
 | **2 × 100 kΩ resistors** | ~5 ฿ | **Battery gauge** on the top bar (voltage divider into an ADC pin) | 🔧 Small addition (~30 lines) |

@@ -22,8 +22,9 @@
 #include "pit.h"
 #include "kds.h"
 #include "imu.h"
+#include "tires.h"
 
-static const char* VERSION = "v1.5";
+static const char* VERSION = "v1.6";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
@@ -37,6 +38,13 @@ KdsBus    kdsBus;
 #if ENABLE_IMU && !defined(SIMULATE_GPS)
 Imu       imuSensor;
 #endif
+#if ENABLE_TIRES && !defined(SIMULATE_GPS)
+Tires     tires;
+#endif
+
+// Per-lap tire averages (for the CSV).
+static float tireSumF = 0, tireSumR = 0;
+static int   tireCntF = 0, tireCntR = 0;
 #if BT_MODE == BT_MODE_RACECHRONO
 BleRaceChrono btLink;  // RaceChrono app, over BLE
 #elif BT_MODE == BT_MODE_NMEA
@@ -67,6 +75,7 @@ void togglePitMode();
 static GpsFix   simFix;
 static EcuData  simEcu;
 static ImuData  simImu;
+static TireData simTires;
 static uint32_t simLastMs = 0;
 static float    simTheta = 0;
 static float    simPrevV = 0;
@@ -120,6 +129,13 @@ void simLoop() {
   if (simImu.leanDeg > simImu.maxLeanR) simImu.maxLeanR = simImu.leanDeg;
   if (-simImu.gLong > simImu.maxBrakeG) simImu.maxBrakeG = -simImu.gLong;
 
+  // Tires warming toward their window over ~5 minutes.
+  float warm = 1.0f - expf(-(float)now / 300000.0f);
+  simTires.frontC = 25.0f + 45.0f * warm + 2.0f * sinf(now / 7000.0f);
+  simTires.rearC = 25.0f + 53.0f * warm + 2.0f * sinf(now / 9000.0f);
+  simTires.frontOk = simTires.rearOk = true;
+  simTires.updatedMs = now;
+
   if (lapTimer.onFix(simFix)) handleLapDone();
 #if BT_MODE != BT_MODE_OFF
   if (!pitActive) btLink.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
@@ -158,6 +174,17 @@ static const ImuData& currentImu() {
 #endif
 }
 
+static const TireData& currentTires() {
+#ifdef SIMULATE_GPS
+  return simTires;
+#elif ENABLE_TIRES
+  return tires.data();
+#else
+  static TireData empty;
+  return empty;
+#endif
+}
+
 // Skip the pages whose feature is compiled out.
 static Page nextPage(Page p) {
   int n = (int)p;
@@ -168,6 +195,9 @@ static Page nextPage(Page p) {
 #endif
 #if !ENABLE_IMU && !defined(SIMULATE_GPS)
     if ((Page)n == Page::Lean) continue;
+#endif
+#if !ENABLE_TIRES && !defined(SIMULATE_GPS)
+    if ((Page)n == Page::Tires) continue;
 #endif
     break;
   }
@@ -323,6 +353,10 @@ void setup() {
   }
 #endif
 
+#if ENABLE_TIRES && !defined(SIMULATE_GPS)
+  tires.begin();
+#endif
+
   if (pitActive) {
     PitActions actions{pitSelectTrack, pitRenameTrack, pitDeleteTrack,
                        pitActiveName, pitActiveBest};
@@ -361,6 +395,21 @@ void loop() {
 #if ENABLE_IMU && !defined(SIMULATE_GPS)
   imuSensor.loop(currentFix().valid ? currentFix().speedKmh : 0.0f);
 #endif
+
+#if ENABLE_TIRES && !defined(SIMULATE_GPS)
+  tires.loop();
+#endif
+
+  // Accumulate the per-lap tire averages while the clock runs.
+  {
+    static uint32_t lastTireAccMs = 0;
+    const TireData& ti = currentTires();
+    if (lapTimer.timing() && now - lastTireAccMs >= TIRE_SAMPLE_MS) {
+      lastTireAccMs = now;
+      if (ti.frontOk) { tireSumF += ti.frontC; tireCntF++; }
+      if (ti.rearOk) { tireSumR += ti.rearC; tireCntR++; }
+    }
+  }
 
   // Stream the engine channels to RaceChrono as a fabricated CAN frame.
 #if BT_MODE == BT_MODE_RACECHRONO
@@ -401,6 +450,18 @@ void loop() {
       q[3] = (uint8_t)(m.maxLeanR < 255 ? m.maxLeanR : 255);
       btLink.sendCan(IMU_CAN_ID, q, sizeof(q));
     }
+    // Tire temperatures (PID 0x102), degrees C + 40 (0xFF = invalid).
+    static uint32_t lastTireCanMs = 0;
+    const TireData& ti = currentTires();
+    if (!pitActive && (ti.frontOk || ti.rearOk) && now - lastTireCanMs >= ECU_CAN_PERIOD_MS) {
+      lastTireCanMs = now;
+      uint8_t r[8] = {0};
+      float f = ti.frontOk ? ti.frontC + 40.0f : 255.0f;
+      float rr = ti.rearOk ? ti.rearC + 40.0f : 255.0f;
+      r[0] = (uint8_t)(f < 0 ? 0 : (f > 255 ? 255 : f));
+      r[1] = (uint8_t)(rr < 0 ? 0 : (rr > 255 ? 255 : rr));
+      btLink.sendCan(TIRE_CAN_ID, r, sizeof(r));
+    }
   }
 #endif
 
@@ -436,7 +497,8 @@ void loop() {
   if (now - lastRenderMs >= DISPLAY_PERIOD_MS) {
     lastRenderMs = now;
     GpsView gv = buildGpsView();
-    display.render(page, lapTimer, gv, currentEcu(), currentImu(), now, activeTrackName);
+    display.render(page, lapTimer, gv, currentEcu(), currentImu(), currentTires(),
+                   now, activeTrackName);
   }
 }
 
@@ -452,9 +514,13 @@ void handleLapDone() {
 #endif
   const ImuData& m = currentImu();
   float lapLean = m.present ? fmaxf(m.maxLeanL, m.maxLeanR) : 0.0f;
+  float tireF = tireCntF ? tireSumF / tireCntF : 0.0f;
+  float tireR = tireCntR ? tireSumR / tireCntR : 0.0f;
+  tireSumF = tireSumR = 0;
+  tireCntF = tireCntR = 0;
   storage.appendLap(date, lapTimer.lastCrossMsOfDay(), activeTrackName,
                     lapTimer.sessionIndex(), n, lapMs, lapTimer.lastLapMaxSpeed(),
-                    lapLean);
+                    lapLean, tireF, tireR);
 #if ENABLE_IMU && !defined(SIMULATE_GPS)
   imuSensor.resetLapPeaks();
 #elif defined(SIMULATE_GPS)
@@ -482,7 +548,8 @@ void togglePitMode() {
   storage.setPitFlag(!pitActive);
   display.notify(pitActive ? "WIFI OFF, REBOOT" : "WIFI ON, REBOOT");
   GpsView gv = buildGpsView();
-  display.render(page, lapTimer, gv, currentEcu(), currentImu(), millis(), activeTrackName);
+  display.render(page, lapTimer, gv, currentEcu(), currentImu(), currentTires(),
+                 millis(), activeTrackName);
   delay(900);
   ESP.restart();
 }
@@ -591,6 +658,7 @@ void handleSerial() {
         Serial.println("  z  erase the active track records (best/sectors/reference)");
         Serial.println("  w  toggle pit mode (WiFi hotspot, reboots)");
         Serial.println("  g  calibrate the IMU (bike upright and still)");
+        Serial.println("  M <hex>  re-address the ONE connected tire sensor (e.g. M 5b)");
         Serial.println("  L <lat> <lon> <hdg> [half-width]  set the line manually");
         break;
       case 'i': {
@@ -627,6 +695,14 @@ void handleSerial() {
                         mm.leanDeg, mm.gLong, mm.maxLeanL, mm.maxLeanR, mm.maxBrakeG);
         } else {
           Serial.println("IMU: no sensor");
+        }
+        const TireData& tt = currentTires();
+        if (tt.frontOk || tt.rearOk) {
+          Serial.printf("Tires: front %.0fC (%s), rear %.0fC (%s)\n",
+                        tt.frontC, tt.frontOk ? "ok" : "-",
+                        tt.rearC, tt.rearOk ? "ok" : "-");
+        } else {
+          Serial.println("Tires: no sensor");
         }
         break;
       }
@@ -693,6 +769,23 @@ void handleSerial() {
       case 'w':
         togglePitMode();
         break;
+      case 'M': {
+#if ENABLE_TIRES && !defined(SIMULATE_GPS)
+        long a = strtol(buf + 1, nullptr, 16);
+        if (a < 0x08 || a > 0x77) {
+          Serial.println("Usage: M <hex addr 08-77>, ONE sensor connected (e.g. M 5b)");
+          break;
+        }
+        if (tires.readdress((uint8_t)a)) {
+          Serial.println("Done. Unplug/replug the sensor's power.");
+        } else {
+          Serial.println("Re-address failed (is exactly one sensor connected?).");
+        }
+#else
+        Serial.println("Tire sensors not available in this build.");
+#endif
+        break;
+      }
       case 'L': {
         char* p = buf + 1;
         char* end = nullptr;

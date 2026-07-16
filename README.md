@@ -297,6 +297,33 @@ in the enclosure, X axis pointing forward**.
 `bytesToInt(raw, 0, 1)`; byte 1 longitudinal G × 10: `bytesToInt(raw, 1, 1) * 0.1`;
 bytes 2/3 per-lap max lean L/R.
 
+### Step 9 — Tire temperatures (optional, 2× MLX90614)
+
+Two contactless IR thermometers aimed at the tread: front under the fender,
+rear on the tail/hugger, 2-5 cm from the tire (the closer, the more the
+reading is tread and not surroundings).
+
+1. Both sensors ship at I2C address 0x5A. **Re-address the rear one first**:
+   connect it ALONE to the tire bus, serial command `M 5b`, then power-cycle.
+2. Wire both on the dedicated tire bus (long cables stay off the display bus):
+
+| MLX90614 (×2) | ESP32 |
+|---|---|
+| VIN | 3V3 |
+| GND | GND |
+| SDA | GPIO32 |
+| SCL | GPIO33 |
+
+3. ✓ *Checkpoint:* the TIRES page shows FRONT / REAR live; warm a sensor with
+   your hand and watch it move. `i` prints both temperatures.
+
+Each lap logs the **average tire temperatures** to the CSV
+(`tire_f_c`, `tire_r_c`) — the numbers that tell you when the tires are in
+their window and how many warm-up laps they need.
+
+**RaceChrono channels:** PID `0x102` — byte 0 front °C + 40:
+`bytesToUInt(raw, 0, 1) - 40`; byte 1 rear °C + 40 (255 = no sensor).
+
 ---
 
 ## 4. Usage — quick reference
@@ -309,6 +336,7 @@ bytes 2/3 per-lap max lean L/R.
 | **SESSION** | session #, laps (best `*`), vmax, theoretical best, average | reset session |
 | **ECU** | gear (big), RPM, throttle bar, coolant temp (KDS bridge) | — |
 | **LEAN** | lean angle (big, L/R), per-lap max lean, braking G (MPU6050) | — |
+| **TIRES** | front / rear tread temperature, live (MLX90614) | — |
 | **GPS** | fix, satellites, HDOP, rate Hz, position | **toggle pit mode (WiFi)** |
 | **LINE** | active track, line status and distance | set the line here |
 
@@ -348,6 +376,7 @@ riding.
 | `z` | erase the active track records (best, sectors, reference) |
 | `w` | toggle pit mode (WiFi hotspot, reboots) |
 | `g` | calibrate the IMU (bike upright and still) |
+| `M <hex>` | re-address the ONE connected tire sensor (e.g. `M 5b`) |
 | `L <lat> <lon> <hdg> [half-width]` | create a track manually (e.g. from Google Maps) |
 
 ### Main settings (`src/config.h`)
@@ -440,6 +469,8 @@ src/
 ├── imu_math.h    Lean-angle estimation math (complementary filter, kinematic
 │                 lean) — pure logic, unit-tested on the host
 ├── imu.cpp/.h    MPU6050 driver (raw I2C), calibration, per-lap peaks
+├── tires_proto.h MLX90614 helpers (SMBus PEC, conversions) — unit-tested
+├── tires.cpp/.h  Dual IR tire sensors on the second I2C bus, re-addressing
 ├── pit.cpp/.h    Pit mode: WiFi hotspot, embedded web app (lap log, track
 │                 management) and OTA firmware updates
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
@@ -498,6 +529,8 @@ The interesting parts:
 | Throttle % looks wrong | Calibrate: log the raw values at closed/full throttle and adjust `THROTTLE_RAW_*` in `src/kds_proto.h` |
 | LEAN page shows `no sensor` | MPU6050 not wired (I2C 21/22), or a solder joint on its header pins |
 | Lean angle drifts or reads offset | Recalibrate with `g` (bike upright, still); check the board is mounted flat, X forward |
+| TIRES page shows `--` for one tire | That sensor is missing or both still share address 0x5A — re-address the rear one (`M 5b`, alone on the bus) |
+| Tire reading looks like ambient | Sensor too far from the tread — bring it to 2-5 cm |
 
 ---
 

@@ -51,12 +51,12 @@ bike verification procedure (K-line vs CAN) and the wiring.
 | Resistor kit | — | already in the build list above (510 Ω + 10 kΩ) |
 | Prototype PCB board *(optional)* | ~20 ฿ | clean soldered assembly |
 
-## B. Tire temperature (infrared) 🔧 *code to write*
+## B. Tire temperature (infrared) ✅ *firmware done (v1.6), parts to order*
 
-Two contactless IR sensors aimed at the tires (front fender + tail): tire
-temperature **per lap** in the CSV and on screen. Know when the tires are in
-their window, how many laps they need at MSP in the morning, whether they
-overheat by the end of a session.
+Two contactless IR sensors aimed at the tires (front fender + tail): live
+TIRES page, per-lap average temperatures in the CSV, RaceChrono channels
+(PID 0x102). Re-address one sensor with the `M` serial command, wire both on
+the dedicated tire I2C bus (GPIO 32/33). See README Step 9.
 
 **To buy:**
 
@@ -104,7 +104,7 @@ The ESP32 can drive a GoPro over BLE (Open GoPro API): recording starts above
 ## Suggested order of battle
 
 1. Parts arrive → assemble the v1 (README steps 0-6).
-2. **A** and **E** as soon as the parts arrive — both firmwares are ready,
-   it's wiring + calibration only (README steps 7 and 8).
+2. **A**, **E** and **B** as soon as the parts arrive — the three firmwares
+   are ready, it's wiring + calibration only (README steps 7, 8 and 9).
 3. **C** any rainy day (pure software).
-4. **B** and **D** when the next Shopee order ships.
+4. **D** when the next Shopee order ships (LoRa modules + second ESP32).

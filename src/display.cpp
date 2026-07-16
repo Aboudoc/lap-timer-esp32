@@ -49,7 +49,8 @@ void Display::notify(const char* msg, uint32_t durationMs) {
 }
 
 void Display::render(Page page, const LapTimer& t, const GpsView& g, const EcuData& e,
-                     const ImuData& m, uint32_t now, const char* trackName) {
+                     const ImuData& m, const TireData& ti, uint32_t now,
+                     const char* trackName) {
   u8g2_.clearBuffer();
   bool flashActive = t.lapCount() > 0 && t.timing() &&
                      now - t.lastCrossLocalMs() < LAP_FLASH_MS;
@@ -63,6 +64,7 @@ void Display::render(Page page, const LapTimer& t, const GpsView& g, const EcuDa
       case Page::Session: drawSession(t); break;
       case Page::Ecu:     drawEcu(e); break;
       case Page::Lean:    drawLean(m); break;
+      case Page::Tires:   drawTires(ti); break;
       case Page::Gps:     drawGps(g); break;
       case Page::Line:    drawLinePage(t, g, trackName); break;
       default: break;
@@ -276,6 +278,39 @@ void Display::drawLean(const ImuData& m) {
   snprintf(b, sizeof(b), "max L%2.0f R%2.0f  B%.1fG",
            m.maxLeanL, m.maxLeanR, m.maxBrakeG > 0 ? m.maxBrakeG : 0);
   drawCentered(b, 63);
+}
+
+void Display::drawTires(const TireData& ti) {
+  char b[24];
+  u8g2_.setFont(u8g2_font_6x12_tf);
+  u8g2_.drawStr(0, 10, "TIRES");
+  if (!ti.frontOk && !ti.rearOk) {
+    u8g2_.setFont(u8g2_font_6x10_tf);
+    u8g2_.drawStr(0, 30, "No IR sensor");
+    u8g2_.drawStr(0, 40, "MLX90614 on bus 2");
+    u8g2_.drawStr(0, 50, "(SDA 32 / SCL 33)");
+    return;
+  }
+  // Front on the left, rear on the right, big.
+  u8g2_.setFont(u8g2_font_6x12_tf);
+  u8g2_.drawStr(10, 24, "FRONT");
+  u8g2_.drawStr(78, 24, "REAR");
+  u8g2_.setFont(u8g2_font_logisoso24_tn);
+  if (ti.frontOk) {
+    snprintf(b, sizeof(b), "%2.0f", (double)ti.frontC);
+  } else {
+    strncpy(b, "--", sizeof(b));
+  }
+  u8g2_.drawStr(8, 54, b);
+  if (ti.rearOk) {
+    snprintf(b, sizeof(b), "%2.0f", (double)ti.rearC);
+  } else {
+    strncpy(b, "--", sizeof(b));
+  }
+  u8g2_.drawStr(74, 54, b);
+  u8g2_.drawVLine(64, 14, 46);
+  u8g2_.setFont(u8g2_font_6x10_tf);
+  drawCentered("deg C, tread surface", 63);
 }
 
 void Display::drawGps(const GpsView& g) {

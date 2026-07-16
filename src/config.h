@@ -78,6 +78,20 @@ constexpr float    IMU_KIN_MIN_SPEED_KMH = 30.0f;  // below: correct with gravit
 constexpr uint32_t IMU_PROBE_MS          = 5000;   // re-probe period when absent
 constexpr uint32_t IMU_CAN_ID            = 0x101;  // fabricated CAN id for RaceChrono
 
+// ============ Tire temperature (2x MLX90614 IR) ============
+// Both sensors live on the ESP32's second I2C bus so the long cable runs
+// (front fender, tail) never disturb the display bus. The two sensors ship
+// at the same address: re-address the REAR one to 0x5B with the 'M' serial
+// command (one sensor connected alone). Harmless when absent.
+#define ENABLE_TIRES 1
+constexpr int      PIN_TIRE_SDA    = 32;
+constexpr int      PIN_TIRE_SCL    = 33;
+constexpr uint8_t  TIRE_FRONT_ADDR = 0x5A;   // factory default
+constexpr uint8_t  TIRE_REAR_ADDR  = 0x5B;   // re-addressed
+constexpr uint32_t TIRE_SAMPLE_MS  = 250;    // alternating front/rear
+constexpr uint32_t TIRE_PROBE_MS   = 5000;   // re-probe period when absent
+constexpr uint32_t TIRE_CAN_ID     = 0x102;  // fabricated CAN id for RaceChrono
+
 // ================= Screen dimming =================
 constexpr uint32_t DIM_AFTER_MS  = 60000;  // dim after 1 min without movement or button
 constexpr float    DIM_SPEED_KMH = 5.0f;   // "movement" threshold
