@@ -92,6 +92,22 @@ constexpr uint32_t TIRE_SAMPLE_MS  = 250;    // alternating front/rear
 constexpr uint32_t TIRE_PROBE_MS   = 5000;   // re-probe period when absent
 constexpr uint32_t TIRE_CAN_ID     = 0x102;  // fabricated CAN id for RaceChrono
 
+// ============ LoRa pit telemetry (SX1276/SX1278) ============
+// The bike broadcasts a compact telemetry packet once per second; a second
+// ESP32 + OLED + LoRa in the pits (firmware: pio run -e pitbox) shows the
+// live lap time, delta and alerts to a friend/coach. Harmless when absent.
+// NEVER power the radio without its antenna screwed on (kills the PA).
+#define ENABLE_LORA 1
+constexpr long     LORA_FREQ_HZ   = 433000000L;  // check local regulations
+constexpr int      PIN_LORA_CS    = 5;
+constexpr int      PIN_LORA_RST   = 4;
+constexpr int      PIN_LORA_DIO0  = 34;  // input-only pin is fine (IRQ line)
+constexpr uint8_t  LORA_SYNC_WORD = 0x4C;        // private network id
+constexpr int      LORA_TX_DBM    = 14;
+constexpr uint32_t LORA_PERIOD_MS = 1000;
+constexpr uint32_t LORA_RETRY_MS  = 10000;       // re-probe when module absent
+constexpr uint32_t PIT_STALE_MS   = 5000;        // pit display: data too old
+
 // ================= Screen dimming =================
 constexpr uint32_t DIM_AFTER_MS  = 60000;  // dim after 1 min without movement or button
 constexpr float    DIM_SPEED_KMH = 5.0f;   // "movement" threshold

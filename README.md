@@ -324,6 +324,41 @@ their window and how many warm-up laps they need.
 **RaceChrono channels:** PID `0x102` — byte 0 front °C + 40:
 `bytesToUInt(raw, 0, 1) - 40`; byte 1 rear °C + 40 (255 = no sensor).
 
+### Step 10 — Live pit telemetry (optional, 2× LoRa + second ESP32)
+
+The bike broadcasts a compact packet once per second (lap, delta, speeds,
+temps); a **pit box** (second ESP32 + OLED + LoRa) shows it live to a friend
+or coach — a 21st-century pit board with 1-2 km of range.
+
+⚠️ **Never power a LoRa module without its antenna screwed on** (it destroys
+the transmitter stage). And check the local regulations for 433 MHz — we
+transmit 42 bytes once per second at 14 dBm, which is as polite as radio gets.
+
+Wiring, identical on both sides (SX1276/SX1278 module, SPI):
+
+| LoRa module | ESP32 |
+|---|---|
+| NSS | GPIO5 |
+| SCK | GPIO18 |
+| MISO | GPIO19 |
+| MOSI | GPIO23 |
+| RST | GPIO4 |
+| DIO0 | GPIO34 |
+| 3.3V / GND | 3V3 / GND |
+
+- **Bike side:** nothing to flash — the normal firmware detects the radio and
+  starts broadcasting (`i` shows `LoRa: radio ok`).
+- **Pit side:** `pio run -e pitbox -t upload` on the second ESP32 (+ OLED on
+  21/22). No buttons: power it (any power bank) and it listens.
+
+✓ *Checkpoint:* the pit box shows the session, lap count, track name, the
+**live predictive delta in big** (inverted when the rider is up on their best),
+current/last/best lap, speed, lean and tire temps, plus the radio RSSI.
+`OLD!` blinks if no packet for 5 s (rider out of range — data resumes alone).
+
+The packet layout lives in `src/pitlink_proto.h`: adding a field to both
+sides is a five-minute change, so the coach screen can show whatever you want.
+
 ---
 
 ## 4. Usage — quick reference
@@ -471,6 +506,9 @@ src/
 ├── imu.cpp/.h    MPU6050 driver (raw I2C), calibration, per-lap peaks
 ├── tires_proto.h MLX90614 helpers (SMBus PEC, conversions) — unit-tested
 ├── tires.cpp/.h  Dual IR tire sensors on the second I2C bus, re-addressing
+├── pitlink_proto.h  Radio packet shared by bike and pit box — unit-tested
+├── lora_link.cpp/.h Bike-side LoRa transmitter (async, quiet probing)
+├── pitbox_main.cpp  The coach-side receiver firmware (env: pitbox)
 ├── pit.cpp/.h    Pit mode: WiFi hotspot, embedded web app (lap log, track
 │                 management) and OTA firmware updates
 ├── display.cpp/.h   The 4 OLED pages + end-of-lap flash (U8g2 library)
@@ -531,6 +569,8 @@ The interesting parts:
 | Lean angle drifts or reads offset | Recalibrate with `g` (bike upright, still); check the board is mounted flat, X forward |
 | TIRES page shows `--` for one tire | That sensor is missing or both still share address 0x5A — re-address the rear one (`M 5b`, alone on the bus) |
 | Tire reading looks like ambient | Sensor too far from the tread — bring it to 2-5 cm |
+| `i` says `no radio` | LoRa module absent or SPI wiring (see Step 10); the firmware re-probes every 10 s |
+| Pit box stuck on `waiting for the bike` | Bike radio absent, different `LORA_SYNC_WORD`/frequency between the two builds, or out of range |
 
 ---
 

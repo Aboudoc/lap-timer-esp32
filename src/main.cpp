@@ -23,8 +23,10 @@
 #include "kds.h"
 #include "imu.h"
 #include "tires.h"
+#include "lora_link.h"
+#include "pitlink_proto.h"
 
-static const char* VERSION = "v1.6";
+static const char* VERSION = "v1.7";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
@@ -40,6 +42,9 @@ Imu       imuSensor;
 #endif
 #if ENABLE_TIRES && !defined(SIMULATE_GPS)
 Tires     tires;
+#endif
+#if ENABLE_LORA
+LoraLink  loraLink;
 #endif
 
 // Per-lap tire averages (for the CSV).
@@ -357,6 +362,10 @@ void setup() {
   tires.begin();
 #endif
 
+#if ENABLE_LORA
+  loraLink.begin();
+#endif
+
   if (pitActive) {
     PitActions actions{pitSelectTrack, pitRenameTrack, pitDeleteTrack,
                        pitActiveName, pitActiveBest};
@@ -398,6 +407,44 @@ void loop() {
 
 #if ENABLE_TIRES && !defined(SIMULATE_GPS)
   tires.loop();
+#endif
+
+  // Broadcast the pit telemetry packet.
+#if ENABLE_LORA
+  {
+    static uint32_t lastLoraMs = 0;
+    static uint8_t loraSeq = 0;
+    if (!pitActive && now - lastLoraMs >= LORA_PERIOD_MS) {
+      lastLoraMs = now;
+      const EcuData& e = currentEcu();
+      const ImuData& m = currentImu();
+      const TireData& ti = currentTires();
+      PitPacket p;
+      p.seq = loraSeq++;
+      p.session = (uint8_t)lapTimer.sessionIndex();
+      p.lapCount = (uint16_t)lapTimer.lapCount();
+      p.currentLapMs = lapTimer.currentLapMs(now);
+      p.lastLapMs = lapTimer.lastLapMs();
+      p.bestLapMs = lapTimer.bestLapMs() ? lapTimer.bestLapMs() : lapTimer.allTimeBestMs();
+      p.predDeltaMs = lapTimer.predDeltaMs();
+      p.flags = (lapTimer.timing() ? PIT_F_TIMING : 0) |
+                (lapTimer.hasPredDelta() ? PIT_F_HASPRED : 0) |
+                ((lapTimer.lapCount() > 0 && lapTimer.timing() &&
+                  now - lapTimer.lastCrossLocalMs() < LAP_FLASH_MS)
+                     ? PIT_F_LAPFLASH : 0);
+      float spd = currentFix().valid ? currentFix().speedKmh : 0;
+      p.speedKmh = (uint8_t)(spd < 255 ? spd : 255);
+      float lean = m.present ? m.leanDeg : 0;
+      p.leanDeg = (int8_t)(lean > 127 ? 127 : (lean < -127 ? -127 : lean));
+      p.tireF = ti.frontOk ? (uint8_t)(ti.frontC + 40) : 255;
+      p.tireR = ti.rearOk ? (uint8_t)(ti.rearC + 40) : 255;
+      p.coolant = (e.link && e.coolantC > -100) ? (uint8_t)(e.coolantC + 40) : 255;
+      p.rpm = (uint16_t)(e.link ? e.rpm : 0);
+      strncpy(p.track, activeTrackName, sizeof(p.track) - 1);
+      uint8_t buf[sizeof(PitPacket)];
+      loraLink.send(buf, pitEncode(p, buf));
+    }
+  }
 #endif
 
   // Accumulate the per-lap tire averages while the clock runs.
@@ -704,6 +751,9 @@ void handleSerial() {
         } else {
           Serial.println("Tires: no sensor");
         }
+#if ENABLE_LORA
+        Serial.printf("LoRa: %s\n", loraLink.ok() ? "radio ok" : "no radio");
+#endif
         break;
       }
       case 'g':

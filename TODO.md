@@ -72,11 +72,12 @@ data: TV-style overlay with the running lap time, live delta, speed, and —
 once project E is done — lean angle. Uses the CSV and traces the device
 already records. **Nothing to buy.**
 
-## D. Live pit telemetry (LoRa) 🔧 *code to write*
+## D. Live pit telemetry (LoRa) ✅ *firmware done (v1.7), parts to order*
 
-The lap timer broadcasts over LoRa radio (1-2 km range); a second box in the
-pits shows your live lap times and delta to a friend or coach while you're
-out — a 21st-century pit board.
+The bike broadcasts once per second (1-2 km range); the pit box (second
+ESP32 + OLED + LoRa, firmware `pio run -e pitbox`) shows the live delta in
+big, laps, speed, lean and temps to a friend or coach. See README Step 10.
+⚠️ Never power a LoRa module without its antenna.
 
 **To buy:**
 
@@ -104,7 +105,7 @@ The ESP32 can drive a GoPro over BLE (Open GoPro API): recording starts above
 ## Suggested order of battle
 
 1. Parts arrive → assemble the v1 (README steps 0-6).
-2. **A**, **E** and **B** as soon as the parts arrive — the three firmwares
-   are ready, it's wiring + calibration only (README steps 7, 8 and 9).
-3. **C** any rainy day (pure software).
-4. **D** when the next Shopee order ships (LoRa modules + second ESP32).
+2. **A**, **E**, **B** and **D** as soon as the parts arrive — all four
+   firmwares are ready, it's wiring + calibration only (README steps 7-10).
+3. **C** (video overlay) once the camera is bought — the only project left
+   to code, and it's a desktop tool.

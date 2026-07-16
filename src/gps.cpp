@@ -59,6 +59,7 @@ void GpsModule::setNmeaRate(uint8_t msgId, uint8_t rate) {
 }
 
 void GpsModule::configureModule() {
+  serial_->setRxBufferSize(1024);  // ride out short main-loop stalls without losing NMEA
   serial_->begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
   delay(100);
 
