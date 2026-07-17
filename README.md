@@ -406,7 +406,9 @@ Four tabs:
   (consistency, pace trend, tire warm-up laps, time left on the table vs
   theoretical best) and the full lap table.
 - **Tracks** — select / rename / delete stored tracks.
-- **System** — download or erase the CSV, **OTA firmware update** (upload
+- **System** — download or erase the CSV, download the **best/last lap
+  traces** (distance, time, speed, lean, RPM, throttle — for a laptop, an
+  email or any external analysis), **OTA firmware update** (upload
   `.pio/build/esp32dev/firmware.bin`, no cable), exit WiFi mode remotely.
 
 **One-tap sync on iPhone:** create a Shortcut once — *Shortcuts → + → Get
