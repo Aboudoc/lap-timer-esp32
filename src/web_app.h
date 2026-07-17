@@ -146,6 +146,28 @@ animation:pop .4s cubic-bezier(.34,1.56,.64,1) 1.5s forwards}
 @keyframes slidein{from{opacity:0;transform:translateX(-10px)}
 to{opacity:1;transform:none}}
 .spark{opacity:.85}
+/* lap inspector */
+.laps-sel{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;
+-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.laps-sel::-webkit-scrollbar{display:none}
+.lc{flex:0 0 auto;background:#222228;border:1px solid var(--line);
+border-radius:99px;padding:7px 13px;font-size:13px;color:var(--mut);
+font-weight:600;white-space:nowrap}
+.lc.on{background:var(--grn);color:#003b1d;border-color:transparent}
+.lc.pb{color:var(--pur)}.lc.pb.on{background:var(--pur);color:#2a0a3a}
+.bike{width:100%;height:auto;display:block;margin:2px 0 4px}
+.secs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+.sec{background:#0f0f12;border:1px solid var(--line);border-radius:12px;
+padding:9px 2px;text-align:center}
+.sec b{display:block;font-size:16px;font-weight:700}
+.sec span{font-size:9px;color:var(--mut);letter-spacing:1px}
+.sec.sb b{color:var(--grn)}
+.ins{display:flex;gap:12px;align-items:flex-start;padding:10px 2px;
+border-bottom:1px solid var(--line)}
+.ins:last-child{border-bottom:none}
+.ins .ic{font-size:20px;line-height:1.2}
+.ins b{display:block;font-size:14px;margin-bottom:1px}
+.ins small{color:var(--mut);font-size:12.5px;line-height:1.35;display:block}
 </style></head><body>
 <header><h1>LAP TIMER</h1><small id="ver"></small><div id="dot"></div></header>
 <main>
@@ -279,7 +301,7 @@ for(const l of lines){const r=l.split(",");if(r.length<6)continue;
 const k=r[0]+"|"+r[2]+"|"+r[3];
 (g[k]=g[k]||{date:r[0],track:r[2],sess:r[3],laps:[]}).laps.push(
 {n:+r[4],t:Math.round(parseFloat(r[5])*1000),v:+r[6]||0,lean:+r[7]||0,
-tf:+r[8]||0,tr:+r[9]||0});}
+tf:+r[8]||0,tr:+r[9]||0,s:[+r[10]||0,+r[11]||0,+r[12]||0]});}
 sessions=Object.values(g).reverse();
 $("#sdetail").innerHTML="";
 $("#slist").innerHTML=sessions.length?sessions.map((s,i)=>{
@@ -322,10 +344,85 @@ return `<svg class="ch" viewBox="0 0 ${w} ${h}">
 <text x="${pl}" y="${h-8}" fill="#8e8e93" font-size="10">lap 1</text>
 <text x="${w-pr}" y="${h-8}" fill="#8e8e93" font-size="10"
  text-anchor="end">lap ${vals.length}</text></svg>`}
+/* stylized sport bike, side view — tire rings colored by temperature */
+function bike(tf,tr){const cf=tf?tclr(tf):"#3a3a42",cr=tr?tclr(tr):"#3a3a42";
+return `<svg class="bike" viewBox="0 0 340 152">
+<path d="M105 96 L146 58 L216 46 L246 44 L258 62 L222 68 L198 96 Z"
+ fill="#26262c"/>
+<path d="M96 58 L142 52 L130 72 L92 72 Z" fill="#2c2c33"/>
+<path d="M246 44 L262 30 L266 34 L254 47 Z" fill="#33333b"/>
+<rect x="150" y="40" width="34" height="12" rx="6" fill="#30303a"/>
+<path d="M78 100 L150 90 L152 97 L80 106 Z" fill="#2a2a30"/>
+<path d="M258 98 L242 46 L249 45 L266 96 Z" fill="#2f2f37"/>
+<circle cx="78" cy="100" r="27" fill="none" stroke="${cr}" stroke-width="9"/>
+<circle cx="78" cy="100" r="11" fill="#0f0f12" stroke="#3a3a42" stroke-width="3"/>
+<circle cx="264" cy="100" r="27" fill="none" stroke="${cf}" stroke-width="9"/>
+<circle cx="264" cy="100" r="11" fill="#0f0f12" stroke="#3a3a42" stroke-width="3"/>
+<text x="78" y="148" fill="${cr}" font-size="14" font-weight="700"
+ text-anchor="middle">R ${tr?tr.toFixed(0)+"&#176;":"--"}</text>
+<text x="264" y="148" fill="${cf}" font-size="14" font-weight="700"
+ text-anchor="middle">F ${tf?tf.toFixed(0)+"&#176;":"--"}</text></svg>`}
+
+/* per-lap inspector: chip selector + bike + sectors */
+function renderInsp(si,li){const s=sessions[si];const l=s.laps[li];
+const best=Math.min(...s.laps.map(x=>x.t));
+const sb=[0,1,2].map(k=>Math.min(...s.laps.map(x=>x.s[k]).filter(v=>v>0)));
+$("#lapsel").innerHTML=s.laps.map((x,j)=>
+`<button class="lc ${j==li?"on":""} ${x.t==best?"pb":""}"
+ onclick="renderInsp(${si},${j})">LAP ${x.n}${x.t==best?" &#9733;":""}</button>`).join("");
+const on=document.querySelector(".lc.on");
+if(on)on.scrollIntoView({inline:"center",block:"nearest"});
+const d=l.t-best;
+$("#insp").innerHTML=bike(l.tf,l.tr)+
+`<div class="stats">
+<div class="stat ${l.t==best?"pb":""}"><b class="num">${fmt(l.t,true)}</b><span>time</span></div>
+<div class="stat"><b class="num ${d?"":""}" style="color:${d?"var(--red)":"var(--grn)"}">
+${d?"+"+(d/1000).toFixed(2):"&#9733; best"}</b><span>delta</span></div>
+<div class="stat"><b class="num">${l.v.toFixed(0)}</b><span>km/h</span></div>
+<div class="stat"><b class="num">${l.lean?l.lean.toFixed(0)+"&deg;":"-"}</b><span>lean</span></div>
+</div>`+
+(l.s[0]?`<div class="secs">${[0,1,2].map(k=>
+`<div class="sec ${l.s[k]<=sb[k]?"sb":""}"><span>S${k+1}</span>
+<b class="num">${l.s[k].toFixed(2)}</b></div>`).join("")}</div>`:"");}
+
+/* session insights */
+function insights(s){const out=[];const ts=s.laps.map(l=>l.t);const n=ts.length;
+if(n<3)return out;
+const best=Math.min(...ts),avg=ts.reduce((a,b)=>a+b,0)/n;
+const sd=Math.sqrt(ts.reduce((a,t)=>a+(t-avg)**2,0)/n)/1000;
+out.push({i:"&#127919;",t:`Consistency &plusmn;${sd.toFixed(2)}s`,
+d:sd<.35?"Metronome laps — you can chase setup gains now.":
+sd<.9?"Solid regularity. Tighten your marks to shave the spread.":
+"Big lap-to-lap spread: pick fixed brake markers and repeat them."});
+const h=Math.floor(n/2),a1=ts.slice(0,h).reduce((a,b)=>a+b,0)/h,
+a2=ts.slice(-h).reduce((a,b)=>a+b,0)/h,tr2=(a2-a1)/1000;
+if(tr2<-.3)out.push({i:"&#128200;",t:`Pace built through the session (${tr2.toFixed(1)}s)`,
+d:"Second half faster than the first — warm-up done, rhythm found."});
+else if(tr2>.5){const late=s.laps.slice(-Math.ceil(n/3));
+const hot=late.some(l=>l.tr>95||l.tf>95);
+out.push({i:"&#128201;",t:`Pace faded late (+${tr2.toFixed(1)}s)`,
+d:hot?"Rear tire ran hot at the end — check pressure or short-shift out of slow turns.":
+"Slower second half — fitness, focus, or traffic?"});}
+const wi=s.laps.findIndex(l=>l.tf>=55&&l.tr>=55);
+if(wi>0)out.push({i:"&#127777;&#65039;",t:`Tires in the window from lap ${s.laps[wi].n}`,
+d:`Allow ${wi} warm-up lap${wi>1?"s":""} before pushing full lean.`});
+if(s.laps[0].s[0]){const tb=[0,1,2].reduce((a,k)=>
+a+Math.min(...s.laps.map(l=>l.s[k]).filter(v=>v>0)),0)*1000;
+const gap=(best-tb)/1000;
+if(gap>.15)out.push({i:"&#129513;",t:`${gap.toFixed(2)}s on the table`,
+d:`Theoretical best ${fmt(tb,true)} by combining your best sectors — they never met on one lap.`});}
+const vb=s.laps.find(l=>l.t==best);
+if(Math.max(...s.laps.map(l=>l.v))-vb.v>6)out.push({i:"&#9889;",
+t:"Fastest lap &ne; fastest straight",
+d:"Your best lap had a lower top speed: corner speed and drive win over raw vmax."});
+return out.slice(0,4)}
+
 function showSess(i){const s=sessions[i];
 const ts=s.laps.map(l=>l.t);const best=Math.min(...ts);
 const avg=ts.reduce((a,b)=>a+b,0)/ts.length;
 const vmax=Math.max(...s.laps.map(l=>l.v)),lmax=Math.max(...s.laps.map(l=>l.lean));
+const ins=insights(s);
+const bi=ts.indexOf(best);
 $("#slist").innerHTML=`<button class="bk" onclick="loadSessions()">&lsaquo; Sessions</button>`;
 $("#sdetail").innerHTML=`
 <div class="pills">${pill("",s.track)}${pill("S",s.sess)}${pill("",s.date)}</div>
@@ -336,6 +433,11 @@ $("#sdetail").innerHTML=`
 <div class="stat"><b class="num">${lmax?lmax.toFixed(0)+"&deg;":"-"}</b><span>lean</span></div>
 </div>
 <div class="card"><h2>Lap times</h2>${s.laps.length>1?chartSvg(ts):'<p class="muted">One lap</p>'}</div>
+<div class="card"><h2>Lap inspector</h2>
+<div class="laps-sel" id="lapsel"></div><div id="insp"></div></div>
+${ins.length?`<div class="card"><h2>Insights</h2>${ins.map(x=>
+`<div class="ins"><div class="ic">${x.i}</div><div><b>${x.t}</b>
+<small>${x.d}</small></div></div>`).join("")}</div>`:""}
 <div class="card"><h2>Laps</h2><table>
 <tr><th>Lap</th><th>Time</th><th>&Delta;</th><th>km/h</th><th>Lean</th><th>F&deg;</th><th>R&deg;</th></tr>
 ${s.laps.map((l,ri)=>{const d=l.t-best;
@@ -348,6 +450,7 @@ return `<tr class="anim ${l.t==best?"best":""}"
 <td class="num" style="color:${l.tr?tclr(l.tr):"inherit"}">${l.tr?l.tr.toFixed(0):"-"}</td>
 </tr>`}).join("")}
 </table></div>`;
+renderInsp(i,bi);
 window.scrollTo({top:0,behavior:"smooth"});}
 
 /* ---- tracks ---- */

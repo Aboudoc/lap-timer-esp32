@@ -36,7 +36,8 @@ class Storage {
   // ---- Lap log ----
   void appendLap(const char* dateStr, uint32_t crossMsOfDay, const char* track,
                  int session, int lapIdx, uint32_t lapMs, float maxKmh,
-                 float leanMaxDeg, float tireFrontC, float tireRearC);
+                 float leanMaxDeg, float tireFrontC, float tireRearC,
+                 const float sectorsS[NUM_SECTORS]);  // seconds, zeros if none
   File openCsvRead();
   void dumpCsv(Stream& out);
   void clearCsv();

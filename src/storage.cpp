@@ -4,7 +4,8 @@
 
 static const char* kCsvPath = "/laps.csv";
 static const char* kCsvHeader =
-    "date,time_utc,track,session,lap,time_s,vmax_kmh,lean_max_deg,tire_f_c,tire_r_c";
+    "date,time_utc,track,session,lap,time_s,vmax_kmh,lean_max_deg,tire_f_c,tire_r_c,"
+    "s1_s,s2_s,s3_s";
 
 // On-flash track file layout: header then dist[traceN] then tMs[traceN].
 struct TrackFileHeader {
@@ -213,17 +214,20 @@ int Storage::nearestTrack(double lat, double lon, float maxKm) {
 
 void Storage::appendLap(const char* dateStr, uint32_t crossMsOfDay, const char* track,
                         int session, int lapIdx, uint32_t lapMs, float maxKmh,
-                        float leanMaxDeg, float tireFrontC, float tireRearC) {
+                        float leanMaxDeg, float tireFrontC, float tireRearC,
+                        const float sectorsS[NUM_SECTORS]) {
   File f = LittleFS.open(kCsvPath, FILE_APPEND);
   if (!f) return;
   if (f.size() == 0) f.println(kCsvHeader);
   unsigned long sec = crossMsOfDay / 1000UL;
-  f.printf("%s,%02lu:%02lu:%02lu.%03lu,%s,%d,%d,%lu.%03lu,%.1f,%.0f,%.0f,%.0f\n",
+  f.printf("%s,%02lu:%02lu:%02lu.%03lu,%s,%d,%d,%lu.%03lu,%.1f,%.0f,%.0f,%.0f,"
+           "%.2f,%.2f,%.2f\n",
            dateStr, sec / 3600UL, (sec / 60UL) % 60UL, sec % 60UL,
            (unsigned long)(crossMsOfDay % 1000UL),
            track, session, lapIdx,
            (unsigned long)(lapMs / 1000UL), (unsigned long)(lapMs % 1000UL),
-           maxKmh, leanMaxDeg, tireFrontC, tireRearC);
+           maxKmh, leanMaxDeg, tireFrontC, tireRearC,
+           sectorsS[0], sectorsS[1], sectorsS[2]);
   f.close();
 }
 

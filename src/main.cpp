@@ -26,7 +26,7 @@
 #include "lora_link.h"
 #include "pitlink_proto.h"
 
-static const char* VERSION = "v1.8";
+static const char* VERSION = "v1.9";
 
 GpsModule gpsMod;
 LapTimer  lapTimer;
@@ -608,9 +608,13 @@ void handleLapDone() {
   float tireR = tireCntR ? tireSumR / tireCntR : 0.0f;
   tireSumF = tireSumR = 0;
   tireCntF = tireCntR = 0;
+  float sectors[NUM_SECTORS] = {0};
+  if (lapTimer.hasSectors()) {
+    for (int k = 0; k < NUM_SECTORS; k++) sectors[k] = lapTimer.lastSectorMs(k) / 1000.0f;
+  }
   storage.appendLap(date, lapTimer.lastCrossMsOfDay(), activeTrackName,
                     lapTimer.sessionIndex(), n, lapMs, lapTimer.lastLapMaxSpeed(),
-                    lapLean, tireF, tireR);
+                    lapLean, tireF, tireR, sectors);
 #if ENABLE_IMU && !defined(SIMULATE_GPS)
   imuSensor.resetLapPeaks();
 #elif defined(SIMULATE_GPS)

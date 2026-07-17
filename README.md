@@ -319,7 +319,9 @@ reading is tread and not surroundings).
 
 Each lap logs the **average tire temperatures** to the CSV
 (`tire_f_c`, `tire_r_c`) — the numbers that tell you when the tires are in
-their window and how many warm-up laps they need.
+their window and how many warm-up laps they need. Sector times are logged
+too (`s1_s,s2_s,s3_s`), which powers the web app's lap inspector and its
+"time left on the table" insight.
 
 **RaceChrono channels:** PID `0x102` — byte 0 front °C + 40:
 `bytesToUInt(raw, 0, 1) - 40`; byte 1 rear °C + 40 (255 = no sensor).
@@ -393,8 +395,12 @@ Four tabs:
   current lap or predictive delta in big (green when you're up), last/best/
   theoretical best, speed, sats, lean, tire temps, RPM/coolant. A phone on
   the hotspot = a pit board without extra hardware.
-- **Sessions** — every session from the lap log: lap-time chart, best/average,
-  vmax, max lean, and the full lap table (times, speeds, lean, tire temps).
+- **Sessions** — every session from the lap log: animated lap-time chart,
+  best/average, vmax, max lean, a **lap inspector** (pick any lap with the
+  LAP chips: bike schematic with tires colored by that lap's temperature,
+  sector times with session-bests highlighted), auto-generated **insights**
+  (consistency, pace trend, tire warm-up laps, time left on the table vs
+  theoretical best) and the full lap table.
 - **Tracks** — select / rename / delete stored tracks.
 - **System** — download or erase the CSV, **OTA firmware update** (upload
   `.pio/build/esp32dev/firmware.bin`, no cable), exit WiFi mode remotely.
