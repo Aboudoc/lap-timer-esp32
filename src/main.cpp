@@ -47,9 +47,11 @@ Tires     tires;
 LoraLink  loraLink;
 #endif
 
-// Per-lap tire averages (for the CSV).
+// Per-lap accumulators (for the CSV).
 static float tireSumF = 0, tireSumR = 0;
 static int   tireCntF = 0, tireCntR = 0;
+static float thrSum = 0;
+static int   thrCnt = 0, rpmMax = 0;
 #if BT_MODE == BT_MODE_RACECHRONO
 BleRaceChrono btLink;  // RaceChrono app, over BLE
 #elif BT_MODE == BT_MODE_NMEA
@@ -72,6 +74,7 @@ void trySetLineHere();
 void applyTrack(int id);
 void persistActiveTrack(bool withTrace);
 void togglePitMode();
+static LapChannels currentChannels();
 
 // ==================== Simulation mode ====================
 // Virtual circular track (~39-44 s per lap) to test the display, buttons
@@ -141,7 +144,8 @@ void simLoop() {
   simTires.frontOk = simTires.rearOk = true;
   simTires.updatedMs = now;
 
-  if (lapTimer.onFix(simFix)) handleLapDone();
+  LapChannels ch = currentChannels();
+  if (lapTimer.onFix(simFix, &ch)) handleLapDone();
 #if BT_MODE != BT_MODE_OFF
   if (!pitActive) btLink.onFix(simFix, 12, 0.8f, true, 2026, 1, 1);
 #endif
@@ -177,6 +181,19 @@ static const ImuData& currentImu() {
   static ImuData empty;
   return empty;
 #endif
+}
+
+// Telemetry channels attached to every fix fed into the lap traces.
+static LapChannels currentChannels() {
+  LapChannels ch;
+  const ImuData& m = currentImu();
+  const EcuData& e = currentEcu();
+  if (m.present) ch.leanDeg = m.leanDeg;
+  if (e.link) {
+    ch.rpm = e.rpm;
+    ch.thrPct = e.throttlePct;
+  }
+  return ch;
 }
 
 static const TireData& currentTires() {
@@ -218,7 +235,8 @@ static float approxDistM(double lat1, double lon1, double lat2, double lon2) {
 
 #ifndef SIMULATE_GPS
 static void onNewFix() {
-  if (lapTimer.onFix(gpsMod.fix())) handleLapDone();
+  LapChannels ch = currentChannels();
+  if (lapTimer.onFix(gpsMod.fix(), &ch)) handleLapDone();
 #if BT_MODE != BT_MODE_OFF
   if (!pitActive) {
     int y = 0, mo = 0, dd = 0;
@@ -266,11 +284,8 @@ void applyTrack(int id) {
   TrackMeta m;
   if (!storage.loadTrackMeta((uint8_t)id, m)) return;
   lapTimer.setLine(m.line);
-  uint16_t n = 0;
-  if (m.traceN &&
-      storage.loadTrackTrace((uint8_t)id, lapTimer.refDistBuffer(),
-                             lapTimer.refTimeBuffer(), n, TRACE_MAX_SAMPLES)) {
-    lapTimer.commitReference(n);
+  if (m.traceN && storage.loadTrackTrace((uint8_t)id, lapTimer.refTraceMutable())) {
+    lapTimer.commitReference(lapTimer.refTraceMutable()->n);
   }
   lapTimer.setAllTimeBest(m.bestMs);
   lapTimer.setBestSectors(m.bestSectors);
@@ -280,7 +295,7 @@ void applyTrack(int id) {
   snprintf(b, sizeof(b), "TRACK %s", m.name);
   display.notify(b);
   Serial.printf("[TRACK] active: %d \"%s\", best %lu ms, trace %u pts\n",
-                id, m.name, (unsigned long)m.bestMs, n);
+                id, m.name, (unsigned long)m.bestMs, lapTimer.refN());
 }
 
 void persistActiveTrack(bool withTrace) {
@@ -293,9 +308,21 @@ void persistActiveTrack(bool withTrace) {
   memcpy(m.bestSectors, lapTimer.bestSectors(), sizeof(m.bestSectors));
   m.traceN = lapTimer.refN();
   if (withTrace) {
-    storage.saveTrack(m, lapTimer.refDist(), lapTimer.refTms(), lapTimer.refN());
+    storage.saveTrack(m, lapTimer.refTrace());
   } else {
     storage.updateTrackMeta(m);
+  }
+}
+
+// Streams a lap trace as CSV (for the web app's compare view and exports).
+static void traceCsvOut(int which, Print& out) {
+  const LapTimer::Trace* t = which ? lapTimer.lastTrace() : lapTimer.refTrace();
+  out.println("dist_m,t_ms,kmh,lean_deg,rpm,throttle_pct");
+  if (!t || t->n == 0) return;
+  for (uint16_t i = 0; i < t->n; i++) {
+    out.printf("%.1f,%lu,%u,%d,%u,%d\n", t->dist[i], (unsigned long)t->tMs[i],
+               t->spd[i], (int)t->lean[i], t->rpm[i],
+               t->thr[i] == 255 ? -1 : (int)t->thr[i]);
   }
 }
 
@@ -411,7 +438,7 @@ void setup() {
 
   if (pitActive) {
     PitActions actions{pitSelectTrack, pitRenameTrack, pitDeleteTrack,
-                       pitActiveName, buildStatusJson, pitExit};
+                       pitActiveName, buildStatusJson, pitExit, traceCsvOut};
     pit.begin(&storage, actions, VERSION);
     display.notify("WIFI 192.168.4.1", 5000);
   } else {
@@ -490,14 +517,19 @@ void loop() {
   }
 #endif
 
-  // Accumulate the per-lap tire averages while the clock runs.
+  // Accumulate the per-lap averages/peaks while the clock runs.
   {
-    static uint32_t lastTireAccMs = 0;
+    static uint32_t lastAccMs = 0;
     const TireData& ti = currentTires();
-    if (lapTimer.timing() && now - lastTireAccMs >= TIRE_SAMPLE_MS) {
-      lastTireAccMs = now;
+    const EcuData& e = currentEcu();
+    if (lapTimer.timing() && now - lastAccMs >= TIRE_SAMPLE_MS) {
+      lastAccMs = now;
       if (ti.frontOk) { tireSumF += ti.frontC; tireCntF++; }
       if (ti.rearOk) { tireSumR += ti.rearC; tireCntR++; }
+      if (e.link) {
+        if (e.throttlePct >= 0) { thrSum += e.throttlePct; thrCnt++; }
+        if (e.rpm > rpmMax) rpmMax = e.rpm;
+      }
     }
   }
 
@@ -612,9 +644,15 @@ void handleLapDone() {
   if (lapTimer.hasSectors()) {
     for (int k = 0; k < NUM_SECTORS; k++) sectors[k] = lapTimer.lastSectorMs(k) / 1000.0f;
   }
+  float thrAvg = thrCnt ? thrSum / thrCnt : 0.0f;
+  int lapRpmMax = rpmMax;
+  thrSum = 0;
+  thrCnt = 0;
+  rpmMax = 0;
   storage.appendLap(date, lapTimer.lastCrossMsOfDay(), activeTrackName,
                     lapTimer.sessionIndex(), n, lapMs, lapTimer.lastLapMaxSpeed(),
-                    lapLean, tireF, tireR, sectors);
+                    lapLean, tireF, tireR, sectors,
+                    m.present ? m.maxBrakeG : 0.0f, thrAvg, lapRpmMax);
 #if ENABLE_IMU && !defined(SIMULATE_GPS)
   imuSensor.resetLapPeaks();
 #elif defined(SIMULATE_GPS)

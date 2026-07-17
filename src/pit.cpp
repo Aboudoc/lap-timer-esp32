@@ -21,6 +21,28 @@ void PitMode::sendPage(const String& body) {
   server_.send(200, "text/html", page);
 }
 
+// Buffers Print output into ~1 KB chunked HTTP writes.
+class ChunkPrint : public Print {
+ public:
+  explicit ChunkPrint(WebServer& s) : s_(s) {}
+  size_t write(uint8_t c) override {
+    buf_[n_++] = (char)c;
+    if (n_ >= sizeof(buf_)) flush();
+    return 1;
+  }
+  void flush() {
+    if (n_) {
+      s_.sendContent(buf_, n_);
+      n_ = 0;
+    }
+  }
+
+ private:
+  WebServer& s_;
+  char buf_[1024];
+  size_t n_ = 0;
+};
+
 // Minimal JSON string escaping (quotes, backslashes, control chars).
 static void jsonEscape(const char* in, char* out, size_t n) {
   size_t o = 0;
@@ -88,6 +110,20 @@ void PitMode::begin(Storage* storage, const PitActions& actions, const char* ver
     server_.send(200, "application/json", b);
   });
   server_.on("/api/tracks", HTTP_GET, [this]() { handleTracksJson(); });
+  server_.on("/api/trace", HTTP_GET, [this]() {
+    int which = server_.arg("which") == "last" ? 1 : 0;
+    server_.sendHeader("Content-Disposition",
+                       which ? "inline; filename=trace_last.csv"
+                             : "inline; filename=trace_best.csv");
+    server_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server_.send(200, "text/csv", "");
+    if (act_.traceCsv) {
+      ChunkPrint cp(server_);
+      act_.traceCsv(which, cp);
+      cp.flush();
+    }
+    server_.sendContent("");
+  });
   server_.on("/track", HTTP_POST, [this]() { handleTrackAction(); });
   server_.on("/exitpit", HTTP_POST, [this]() {
     server_.send(200, "text/plain", "rebooting");

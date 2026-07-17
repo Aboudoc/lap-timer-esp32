@@ -26,8 +26,8 @@ class Storage {
   // ---- Tracks ----
   int  listTracks(TrackMeta* out, int maxOut);
   bool loadTrackMeta(uint8_t id, TrackMeta& m);
-  bool loadTrackTrace(uint8_t id, float* dist, uint32_t* tMs, uint16_t& n, uint16_t maxN);
-  bool saveTrack(const TrackMeta& m, const float* dist, const uint32_t* tMs, uint16_t n);
+  bool loadTrackTrace(uint8_t id, LapTimer::Trace* t);
+  bool saveTrack(const TrackMeta& m, const LapTimer::Trace* t);  // t may be null
   bool updateTrackMeta(const TrackMeta& m);   // rewrite the header, keep the trace
   int  createTrack(const StartLine& line, const char* name);  // nullptr name -> "Track <id>"
   bool deleteTrack(uint8_t id);
@@ -37,7 +37,8 @@ class Storage {
   void appendLap(const char* dateStr, uint32_t crossMsOfDay, const char* track,
                  int session, int lapIdx, uint32_t lapMs, float maxKmh,
                  float leanMaxDeg, float tireFrontC, float tireRearC,
-                 const float sectorsS[NUM_SECTORS]);  // seconds, zeros if none
+                 const float sectorsS[NUM_SECTORS],  // seconds, zeros if none
+                 float brakeG, float thrAvgPct, int rpmMax);
   File openCsvRead();
   void dumpCsv(Stream& out);
   void clearCsv();

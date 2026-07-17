@@ -12,6 +12,7 @@ struct PitActions {
   const char* (*activeTrackName)();
   void (*statusJson)(char* buf, size_t n);  // live state for /api/status
   void (*exitPit)();                        // clear the flag and reboot
+  void (*traceCsv)(int which, Print& out);  // 0 = best lap, 1 = last lap
 };
 
 // Pit mode: WiFi hotspot + embedded web app (installable on the phone's home

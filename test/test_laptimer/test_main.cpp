@@ -195,6 +195,45 @@ static void test_predictive_delta_near_zero_at_same_pace() {
   TEST_ASSERT_INT32_WITHIN(500, 0, t.predDeltaMs());
 }
 
+static void test_trace_channels_and_last_lap() {
+  LapTimer t;
+  t.setLine(eastLine());
+  uint32_t ms = 10000;
+  int laps = 0;
+  LapChannels ch;
+  ch.leanDeg = -30;
+  ch.rpm = 9000;
+  ch.thrPct = 75;
+  // Prime + two rectangles, feeding channels on every fix.
+  t.onFix(mkFix(-10, 0, ms, ms), &ch);
+  for (int r = 0; r < 2; r++) {
+    // inline rectangleLap with channels
+    float pts[5][4] = {{-10, 0, 10, 0}, {10, 0, 210, 0}, {210, 0, 210, 200},
+                       {210, 200, -10, 200}, {-10, 200, -10, 0}};
+    int steps[5] = {1, 10, 10, 11, 10};
+    for (int seg = 0; seg < 5; seg++) {
+      for (int i = 1; i <= steps[seg]; i++) {
+        float x = pts[seg][0] + (pts[seg][2] - pts[seg][0]) * i / steps[seg];
+        float y = pts[seg][1] + (pts[seg][3] - pts[seg][1]) * i / steps[seg];
+        ms += 1000;
+        if (t.onFix(mkFix(x, y, ms, ms), &ch)) laps++;
+      }
+    }
+  }
+  TEST_ASSERT_EQUAL_INT(1, laps);
+  // The finished lap is exported as "last", with the channels stored.
+  const LapTimer::Trace* last = t.lastTrace();
+  TEST_ASSERT_NOT_NULL(last);
+  TEST_ASSERT_TRUE(last->n > 10);
+  TEST_ASSERT_EQUAL_INT8(-30, last->lean[5]);
+  TEST_ASSERT_EQUAL_UINT16(9000, last->rpm[5]);
+  TEST_ASSERT_EQUAL_UINT8(75, last->thr[5]);
+  TEST_ASSERT_EQUAL_UINT8(100, last->spd[5]);  // mkFix default speed
+  // The reference (all-time best) carries them too.
+  TEST_ASSERT_TRUE(t.refN() > 10);
+  TEST_ASSERT_EQUAL_UINT16(9000, t.refTrace()->rpm[5]);
+}
+
 static void test_reference_reload_gives_delta_on_lap_one() {
   LapTimer big;
   big.setLine(eastLine());
@@ -208,8 +247,7 @@ static void test_reference_reload_gives_delta_on_lap_one() {
   // Simulate a fresh boot that reloads the persisted reference.
   LapTimer t2;
   t2.setLine(eastLine());
-  memcpy(t2.refDistBuffer(), big.refDist(), big.refN() * sizeof(float));
-  memcpy(t2.refTimeBuffer(), big.refTms(), big.refN() * sizeof(uint32_t));
+  *t2.refTraceMutable() = *big.refTrace();
   t2.commitReference(big.refN());
   t2.setAllTimeBest(big.allTimeBestMs());
 
@@ -231,6 +269,7 @@ int main(int, char**) {
   RUN_TEST(test_session_gap_starts_new_session);
   RUN_TEST(test_sectors_and_theoretical_best);
   RUN_TEST(test_predictive_delta_near_zero_at_same_pace);
+  RUN_TEST(test_trace_channels_and_last_lap);
   RUN_TEST(test_reference_reload_gives_delta_on_lap_one);
   return UNITY_END();
 }

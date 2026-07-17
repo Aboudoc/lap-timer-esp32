@@ -395,7 +395,11 @@ Four tabs:
   current lap or predictive delta in big (green when you're up), last/best/
   theoretical best, speed, sats, lean, tire temps, RPM/coolant. A phone on
   the hotspot = a pit board without extra hardware.
-- **Sessions** — every session from the lap log: animated lap-time chart,
+- **Sessions** — opens with **Best vs Last lap**: the two speed traces
+  overlaid over distance, the continuous time-delta strip, and auto-written
+  findings ("+0.55s between 750-1125 m — min speed 175 vs 193 km/h", full
+  throttle % comparison) — the on-device answer to "where am I losing time?".
+  Then every session from the lap log: animated lap-time chart,
   best/average, vmax, max lean, a **lap inspector** (pick any lap with the
   LAP chips: bike schematic with tires colored by that lap's temperature,
   sector times with session-bests highlighted), auto-generated **insights**

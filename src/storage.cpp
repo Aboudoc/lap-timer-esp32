@@ -5,9 +5,10 @@
 static const char* kCsvPath = "/laps.csv";
 static const char* kCsvHeader =
     "date,time_utc,track,session,lap,time_s,vmax_kmh,lean_max_deg,tire_f_c,tire_r_c,"
-    "s1_s,s2_s,s3_s";
+    "s1_s,s2_s,s3_s,brake_g,thr_avg_pct,rpm_max";
 
-// On-flash track file layout: header then dist[traceN] then tMs[traceN].
+// On-flash track file layout: header, then the trace arrays sequentially
+// (dist, tMs, and since LTK2: spd, lean, rpm, thr), each traceN long.
 struct TrackFileHeader {
   uint32_t magic;
   char     name[16];
@@ -19,7 +20,8 @@ struct TrackFileHeader {
   uint16_t reserved;
 } __attribute__((packed));
 
-static const uint32_t kTrackMagic = 0x314B544CUL;  // "LTK1"
+static const uint32_t kTrackMagic = 0x314B544CUL;    // "LTK1" (no channels)
+static const uint32_t kTrackMagicV2 = 0x324B544CUL;  // "LTK2" (with channels)
 
 void Storage::trackPath(char* buf, size_t n, uint8_t id) {
   snprintf(buf, n, "/tracks/T%u.trk", (unsigned)id);
@@ -27,7 +29,7 @@ void Storage::trackPath(char* buf, size_t n, uint8_t id) {
 
 static void metaToHeader(const TrackMeta& m, TrackFileHeader& h) {
   memset(&h, 0, sizeof(h));
-  h.magic = kTrackMagic;
+  h.magic = kTrackMagicV2;
   strncpy(h.name, m.name, sizeof(h.name) - 1);
   h.lat = m.line.lat;
   h.lon = m.line.lon;
@@ -53,7 +55,8 @@ static void headerToMeta(const TrackFileHeader& h, uint8_t id, TrackMeta& m) {
 }
 
 static bool readHeader(File& f, TrackFileHeader& h) {
-  return f.read((uint8_t*)&h, sizeof(h)) == sizeof(h) && h.magic == kTrackMagic;
+  return f.read((uint8_t*)&h, sizeof(h)) == sizeof(h) &&
+         (h.magic == kTrackMagic || h.magic == kTrackMagicV2);
 }
 
 void Storage::begin() {
@@ -110,8 +113,8 @@ bool Storage::loadTrackMeta(uint8_t id, TrackMeta& m) {
   return ok;
 }
 
-bool Storage::loadTrackTrace(uint8_t id, float* dist, uint32_t* tMs, uint16_t& n, uint16_t maxN) {
-  n = 0;
+bool Storage::loadTrackTrace(uint8_t id, LapTimer::Trace* t) {
+  t->n = 0;
   char path[24];
   trackPath(path, sizeof(path), id);
   File f = LittleFS.open(path, FILE_READ);
@@ -121,27 +124,42 @@ bool Storage::loadTrackTrace(uint8_t id, float* dist, uint32_t* tMs, uint16_t& n
     f.close();
     return false;
   }
-  uint16_t want = h.traceN < maxN ? h.traceN : maxN;
-  bool ok = f.read((uint8_t*)dist, want * sizeof(float)) == want * sizeof(float);
-  if (ok && h.traceN > want) f.seek((h.traceN - want) * sizeof(float), SeekCur);
-  ok = ok && f.read((uint8_t*)tMs, want * sizeof(uint32_t)) == want * sizeof(uint32_t);
+  uint16_t n = h.traceN < TRACE_MAX_SAMPLES ? h.traceN : TRACE_MAX_SAMPLES;
+  bool ok = f.read((uint8_t*)t->dist, n * 4) == (size_t)n * 4 &&
+            f.read((uint8_t*)t->tMs, n * 4) == (size_t)n * 4;
+  if (ok && h.magic == kTrackMagicV2) {
+    ok = f.read((uint8_t*)t->spd, n) == n &&
+         f.read((uint8_t*)t->lean, n) == n &&
+         f.read((uint8_t*)t->rpm, n * 2) == (size_t)n * 2 &&
+         f.read((uint8_t*)t->thr, n) == n;
+  } else if (ok) {
+    memset(t->spd, 0, n);
+    memset(t->lean, 0, n);
+    memset(t->rpm, 0, n * 2);
+    memset(t->thr, 255, n);
+  }
   f.close();
-  if (ok) n = want;
+  if (ok) t->n = n;
   return ok;
 }
 
-bool Storage::saveTrack(const TrackMeta& m, const float* dist, const uint32_t* tMs, uint16_t n) {
+bool Storage::saveTrack(const TrackMeta& m, const LapTimer::Trace* t) {
   char path[24];
   trackPath(path, sizeof(path), m.id);
   File f = LittleFS.open(path, FILE_WRITE);  // truncates
   if (!f) return false;
+  uint16_t n = t ? t->n : 0;
   TrackFileHeader h;
   metaToHeader(m, h);
   h.traceN = n;
   bool ok = f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
   if (ok && n) {
-    ok = f.write((const uint8_t*)dist, n * sizeof(float)) == n * sizeof(float) &&
-         f.write((const uint8_t*)tMs, n * sizeof(uint32_t)) == n * sizeof(uint32_t);
+    ok = f.write((const uint8_t*)t->dist, n * 4) == (size_t)n * 4 &&
+         f.write((const uint8_t*)t->tMs, n * 4) == (size_t)n * 4 &&
+         f.write((const uint8_t*)t->spd, n) == n &&
+         f.write((const uint8_t*)t->lean, n) == n &&
+         f.write((const uint8_t*)t->rpm, n * 2) == (size_t)n * 2 &&
+         f.write((const uint8_t*)t->thr, n) == n;
   }
   f.close();
   return ok;
@@ -151,15 +169,16 @@ bool Storage::updateTrackMeta(const TrackMeta& m) {
   char path[24];
   trackPath(path, sizeof(path), m.id);
   File f = LittleFS.open(path, "r+");
-  if (!f) return saveTrack(m, nullptr, nullptr, 0);
+  if (!f) return saveTrack(m, nullptr);
   TrackFileHeader old;
   if (!readHeader(f, old)) {
     f.close();
-    return saveTrack(m, nullptr, nullptr, 0);
+    return saveTrack(m, nullptr);
   }
   TrackFileHeader h;
   metaToHeader(m, h);
-  h.traceN = old.traceN;  // the trace on file stays as it is
+  h.magic = old.magic;    // keep the on-file trace layout as it is
+  h.traceN = old.traceN;
   f.seek(0, SeekSet);
   bool ok = f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
   f.close();
@@ -185,7 +204,7 @@ int Storage::createTrack(const StartLine& line, const char* name) {
     snprintf(m.name, sizeof(m.name), "Track %d", id);
   }
   m.line = line;
-  return saveTrack(m, nullptr, nullptr, 0) ? id : -1;
+  return saveTrack(m, nullptr) ? id : -1;
 }
 
 bool Storage::deleteTrack(uint8_t id) {
@@ -215,19 +234,21 @@ int Storage::nearestTrack(double lat, double lon, float maxKm) {
 void Storage::appendLap(const char* dateStr, uint32_t crossMsOfDay, const char* track,
                         int session, int lapIdx, uint32_t lapMs, float maxKmh,
                         float leanMaxDeg, float tireFrontC, float tireRearC,
-                        const float sectorsS[NUM_SECTORS]) {
+                        const float sectorsS[NUM_SECTORS],
+                        float brakeG, float thrAvgPct, int rpmMax) {
   File f = LittleFS.open(kCsvPath, FILE_APPEND);
   if (!f) return;
   if (f.size() == 0) f.println(kCsvHeader);
   unsigned long sec = crossMsOfDay / 1000UL;
   f.printf("%s,%02lu:%02lu:%02lu.%03lu,%s,%d,%d,%lu.%03lu,%.1f,%.0f,%.0f,%.0f,"
-           "%.2f,%.2f,%.2f\n",
+           "%.2f,%.2f,%.2f,%.2f,%.0f,%d\n",
            dateStr, sec / 3600UL, (sec / 60UL) % 60UL, sec % 60UL,
            (unsigned long)(crossMsOfDay % 1000UL),
            track, session, lapIdx,
            (unsigned long)(lapMs / 1000UL), (unsigned long)(lapMs % 1000UL),
            maxKmh, leanMaxDeg, tireFrontC, tireRearC,
-           sectorsS[0], sectorsS[1], sectorsS[2]);
+           sectorsS[0], sectorsS[1], sectorsS[2],
+           brakeG, thrAvgPct, rpmMax);
   f.close();
 }
 

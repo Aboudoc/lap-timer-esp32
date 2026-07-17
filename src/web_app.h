@@ -180,6 +180,7 @@ border-bottom:1px solid var(--line)}
  <div class="tele" id="ltele"></div>
 </section>
 <section id="p-sess" hidden>
+ <div id="cmp"></div>
  <div id="slist"></div><div id="sdetail"></div>
 </section>
 <section id="p-trk" hidden><div id="tlist"></div></section>
@@ -189,6 +190,14 @@ border-bottom:1px solid var(--line)}
    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
     stroke-linecap="round"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 21h16"/></svg>
    Download lap log (CSV)<span>&rsaquo;</span></div>
+  <div class="li" onclick="location='/api/trace?which=best'">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round"><path d="M3 17c4 0 4-10 8-10s4 6 10 6"/></svg>
+   Best lap trace (CSV)<span>&rsaquo;</span></div>
+  <div class="li" onclick="location='/api/trace?which=last'">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round"><path d="M3 15c5 0 3-6 8-6s5 8 10 4"/></svg>
+   Last lap trace (CSV)<span>&rsaquo;</span></div>
   <div class="li" onclick="location='/update'">
    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
     stroke-linecap="round"><path d="M12 21V9m0 0 5 5m-5-5-5 5M4 3h16"/></svg>
@@ -241,7 +250,8 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
 document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
 b.classList.add("on");
 ["live","sess","trk","sys"].forEach(p=>$("#p-"+p).hidden=p!=b.dataset.p);
-if(b.dataset.p=="sess")loadSessions();if(b.dataset.p=="trk")loadTracks();});
+if(b.dataset.p=="sess"){loadSessions();loadCompare()}
+if(b.dataset.p=="trk")loadTracks();});
 
 /* ---- live ---- */
 let st=null,stAt=0,prevLaps=-1;
@@ -452,6 +462,79 @@ return `<tr class="anim ${l.t==best?"best":""}"
 </table></div>`;
 renderInsp(i,bi);
 window.scrollTo({top:0,behavior:"smooth"});}
+
+/* ---- best vs last comparison (on-device traces) ---- */
+function parseTrace(t){const L=t.trim().split(/\r?\n/).slice(1);const o=[];
+for(const l of L){const r=l.split(",");if(r.length<3)continue;
+o.push({d:+r[0],t:+r[1],v:+r[2],thr:+r[5]})}return o}
+function tAt(tr,d){let i=1;while(i<tr.length-1&&tr[i].d<d)i++;
+const a=tr[i-1],b=tr[i];if(b.d<=a.d)return a.t;
+return a.t+(b.t-a.t)*(d-a.d)/(b.d-a.d)}
+function vAt(tr,d){let i=1;while(i<tr.length-1&&tr[i].d<d)i++;
+const a=tr[i-1],b=tr[i];if(b.d<=a.d)return a.v;
+return a.v+(b.v-a.v)*(d-a.d)/(b.d-a.d)}
+async function loadCompare(){try{
+const[rb,rl]=await Promise.all([fetch("/api/trace?which=best",{cache:"no-store"}),
+fetch("/api/trace?which=last",{cache:"no-store"})]);
+const b=parseTrace(await rb.text()),l=parseTrace(await rl.text());
+if(b.length>10&&l.length>10)renderCompare(b,l);else $("#cmp").innerHTML="";
+}catch(e){$("#cmp").innerHTML=""}}
+function renderCompare(b,l){
+const D=Math.min(b[b.length-1].d,l[l.length-1].d);
+const w=340,h=120,pl=30,pr=8,pt=8,pb=16,N=80;
+let vmx=0,vmn=999;const pts=[];
+for(let i=0;i<=N;i++){const d=D*i/N;const vb=vAt(b,d),vl=vAt(l,d);
+vmx=Math.max(vmx,vb,vl);vmn=Math.min(vmn,vb,vl);
+pts.push({d,vb,vl,dt:tAt(l,d)-tAt(b,d)})}
+const sx=d=>pl+d*(w-pl-pr)/D;
+const sy=v=>pt+(vmx-v)*(h-pt-pb)/Math.max(1,vmx-vmn);
+const pth=k=>pts.map((p,i)=>(i?"L":"M")+sx(p.d).toFixed(1)+" "+sy(p[k]).toFixed(1)).join(" ");
+/* delta strip */
+const dmax=Math.max(50,...pts.map(p=>Math.abs(p.dt)));
+const h2=64,z=h2/2;
+const dpth=pts.map((p,i)=>(i?"L":"M")+sx(p.d).toFixed(1)+" "+
+(z-p.dt*(z-6)/dmax).toFixed(1)).join(" ");
+const fin=pts[N].dt;
+/* findings: rank 100m-ish windows by time lost */
+const W=8,zone=[];
+for(let k=0;k<W;k++){const i0=Math.floor(k*N/W),i1=Math.floor((k+1)*N/W);
+const gain=pts[i1].dt-pts[i0].dt;
+const mb=Math.min(...pts.slice(i0,i1+1).map(p=>p.vb)),
+ml=Math.min(...pts.slice(i0,i1+1).map(p=>p.vl));
+zone.push({k,gain,d0:pts[i0].d,d1:pts[i1].d,mb,ml})}
+zone.sort((a,c)=>c.gain-a.gain);
+let f=[];
+for(const zn of zone.slice(0,2))if(zn.gain>150)f.push(
+`&#128308; <b>+${(zn.gain/1000).toFixed(2)}s</b> between ${zn.d0.toFixed(0)}-${zn.d1.toFixed(0)} m
+ &mdash; min speed ${zn.ml.toFixed(0)} vs <span style="color:var(--pur)">${zn.mb.toFixed(0)}</span> km/h`);
+const gz=zone[zone.length-1];
+if(gz.gain<-150)f.push(
+`&#128994; <b>${(gz.gain/1000).toFixed(2)}s</b> gained ${gz.d0.toFixed(0)}-${gz.d1.toFixed(0)} m
+ &mdash; keep that line`);
+const bthr=b.filter(p=>p.thr>=0),lthr=l.filter(p=>p.thr>=0);
+if(bthr.length>10)f.push(`&#9889; Full throttle: ${Math.round(100*lthr.filter(p=>p.thr>=90).length/Math.max(1,lthr.length))}%
+ vs <span style="color:var(--pur)">${Math.round(100*bthr.filter(p=>p.thr>=90).length/bthr.length)}%</span> of the lap`);
+$("#cmp").innerHTML=`<div class="card"><h2>Best vs last lap</h2>
+<svg class="ch" viewBox="0 0 ${w} ${h}">
+<path d="${pth('vb')}" fill="none" stroke="#bf5af2" stroke-width="2"/>
+<path class="ln" pathLength="1" d="${pth('vl')}" fill="none" stroke="#00e676" stroke-width="2"/>
+<text x="${pl}" y="${h-4}" fill="#8e8e93" font-size="9">0 m</text>
+<text x="${w-pr}" y="${h-4}" fill="#8e8e93" font-size="9" text-anchor="end">${D.toFixed(0)} m</text>
+<text x="${pl-4}" y="${sy(vmx)+3}" fill="#8e8e93" font-size="9" text-anchor="end">${vmx.toFixed(0)}</text>
+<text x="${pl-4}" y="${sy(vmn)+3}" fill="#8e8e93" font-size="9" text-anchor="end">${vmn.toFixed(0)}</text>
+</svg>
+<svg class="ch" viewBox="0 0 ${w} ${h2}">
+<line x1="${pl}" y1="${z}" x2="${w-pr}" y2="${z}" stroke="#26262c"/>
+<path d="${dpth}" fill="none" stroke="${fin>0?"#ff453a":"#00e676"}" stroke-width="2"/>
+<text x="${w-pr}" y="${fin>0?h2-6:14}" fill="${fin>0?"#ff453a":"#00e676"}"
+ font-size="11" font-weight="700" text-anchor="end">${fin>0?"+":""}${(fin/1000).toFixed(2)}s</text>
+</svg>
+<p style="font-size:11px;color:#8e8e93;margin:2px 0 8px">
+<span style="color:#bf5af2">&#9644;</span> best &nbsp;
+<span style="color:#00e676">&#9644;</span> last &nbsp;&middot;&nbsp; speed, then time delta</p>
+${f.map(x=>`<div style="padding:9px 2px;border-bottom:1px solid var(--line);
+font-size:13.5px;color:#d4d4d9;line-height:1.45">${x}</div>`).join("")}
+</div>`}
 
 /* ---- tracks ---- */
 async function post(u,o){await fetch(u,{method:"POST",

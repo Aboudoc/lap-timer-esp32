@@ -22,6 +22,13 @@ struct Lap {
 // Formats a lap time: "1:23.4" (centis=false) or "1:23.45" (centis=true).
 void fmtLapTime(char* buf, size_t n, uint32_t ms, bool centis);
 
+// Extra channels sampled along the lap traces (all optional).
+struct LapChannels {
+  float leanDeg = 0;
+  int   rpm = 0;
+  float thrPct = -1;  // -1 = unknown
+};
+
 // The timing core. Pure logic, no Arduino dependency: it also builds on the
 // host for the unit tests (test/test_laptimer).
 //
@@ -31,29 +38,40 @@ void fmtLapTime(char* buf, size_t n, uint32_t ms, bool centis);
 //    active track and is persisted by the caller
 class LapTimer {
  public:
+  // Distance -> time trace of a lap with telemetry channels, sampled at
+  // every fix. Public: storage persists it, the web app exports it.
+  struct Trace {
+    uint16_t n = 0;
+    float    dist[TRACE_MAX_SAMPLES];   // cumulative meters since the line
+    uint32_t tMs[TRACE_MAX_SAMPLES];    // elapsed ms since the line
+    uint8_t  spd[TRACE_MAX_SAMPLES];    // km/h
+    int8_t   lean[TRACE_MAX_SAMPLES];   // deg, + = right
+    uint16_t rpm[TRACE_MAX_SAMPLES];
+    uint8_t  thr[TRACE_MAX_SAMPLES];    // %, 255 = unknown
+  };
+
   // ---- Track setup ----
   void setLine(const StartLine& line);  // wipes track data + session (new gate)
   const StartLine& line() const { return line_; }
   void clearTrackData();                // erase all-time best / reference / sectors
 
-  // Load persisted track data: fill the buffers, then commit.
-  float*    refDistBuffer() { return ref_.dist; }
-  uint32_t* refTimeBuffer() { return ref_.tMs; }
-  void      commitReference(uint16_t n);
-  void      setAllTimeBest(uint32_t ms) { allTimeBest_ = ms; }
-  void      setBestSectors(const uint32_t* s);
+  // Load persisted track data: fill the reference trace, then commit.
+  Trace* refTraceMutable() { return &ref_; }
+  void   commitReference(uint16_t n);
+  void   setAllTimeBest(uint32_t ms) { allTimeBest_ = ms; }
+  void   setBestSectors(const uint32_t* s);
 
-  // Persistence outbox: read the reference for saving, ack when done.
-  const float*    refDist() const { return ref_.dist; }
-  const uint32_t* refTms() const { return ref_.tMs; }
-  uint16_t        refN() const { return ref_.n; }
+  // Persistence/export: reference (all-time best) and last completed lap.
+  const Trace* refTrace() const { return &ref_; }
+  const Trace* lastTrace() const { return hasLast_ ? last_ : nullptr; }
+  uint16_t refN() const { return ref_.n; }
   bool newAllTimeBest() const { return newAllTimeBest_; }
   bool sectorsImproved() const { return sectorsImproved_; }
   void ackPersist() { newAllTimeBest_ = false; sectorsImproved_ = false; }
 
   // ---- Live feed ----
-  // Feed a new fix; returns true when a lap was just completed.
-  bool onFix(const GpsFix& fix);
+  // Feed a new fix (+ optional telemetry channels); true when a lap completed.
+  bool onFix(const GpsFix& fix, const LapChannels* ch = nullptr);
   void resetSession();
 
   // ---- Session state ----
@@ -93,18 +111,12 @@ class LapTimer {
   uint32_t theoreticalBestMs() const;
 
  private:
-  // Distance -> elapsed-time trace of a lap, sampled at every fix.
-  struct Trace {
-    uint16_t n = 0;
-    float    dist[TRACE_MAX_SAMPLES];  // cumulative meters since the line
-    uint32_t tMs[TRACE_MAX_SAMPLES];   // elapsed ms since the line
-  };
-
   bool crossed(const GpsFix& a, const GpsFix& b, float& tOut) const;
   void toLocal(double lat, double lon, float& x, float& y) const;
-  void traceAppend(float d, uint32_t ms);
-  void traceRestart(float initialDist, uint32_t initialElapsed);
-  void advancePoint(float d, uint32_t elapsed);  // trace + sector splits
+  void traceAppend(float d, uint32_t ms, float spdKmh, const LapChannels* ch);
+  void traceRestart(float initialDist, uint32_t initialElapsed, float spdKmh,
+                    const LapChannels* ch);
+  void advancePoint(float d, uint32_t elapsed, float spdKmh, const LapChannels* ch);
   void adoptReference();
   void computeBoundaries();
   void finishLapSectors(uint32_t lapMs);
@@ -139,8 +151,12 @@ class LapTimer {
   bool     lastLapWasRecord_ = false;
   bool     newAllTimeBest_ = false;
 
-  // Traces / predictive delta
-  Trace    cur_, ref_;
+  // Traces / predictive delta. cur_ and last_ swap buffers at each lap
+  // completion, so the previous lap stays available for comparison export.
+  Trace    bufA_, bufB_, ref_;
+  Trace*   cur_ = &bufA_;
+  Trace*   last_ = &bufB_;
+  bool     hasLast_ = false;
   float    curDist_ = 0;      // distance ridden in the current lap
   uint16_t refWalk_ = 0;      // walking index into ref_ (monotonic per lap)
   int32_t  predDelta_ = 0;
