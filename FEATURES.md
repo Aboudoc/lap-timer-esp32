@@ -179,7 +179,7 @@ work remains once the part is on the desk.
 | **MLX90614 IR sensor ×2** | 300-500 ฿ | **Tire temperatures** front/rear: live page, per-lap CSV averages, RaceChrono | ✅ Firmware ready (v1.6) — wire + re-address one (README Step 9) |
 | **SX1278 LoRa 433 ×2 + 2nd ESP32 + 2nd OLED** | ~600 ฿ | **Live pit telemetry**: coach screen with delta, laps, temps, 1-2 km range | ✅ Firmware ready (v1.7) — bike auto-detects, pit box = `pio run -e pitbox` |
 | **MPU6050 IMU** (accelerometer + gyro) | 40-80 ฿ | **Lean angle** display and per-lap max, G-force logging | ✅ Firmware ready (v1.5) — plug it on the I2C bus, calibrate with `g` |
-| **2.42" SSD1309 OLED** | 150-250 ฿ | Twice the screen: bigger digits, delta readable further into the fairing | ✅ One line to change (U8g2 constructor) |
+| **2.42" SSD1309 OLED** | ~375 ฿ | 2.5× the screen: ~23 mm tall lap digits on the tank | ✅ Ordered — firmware ready, set `DISPLAY_SSD1309 1` when it arrives (0.96" becomes the pit-box screen) |
 | **2 × 100 kΩ resistors** | ~5 ฿ | **Battery gauge** on the top bar (voltage divider into an ADC pin) | 🔧 Small addition (~30 lines) |
 | **Second push button** | ~20 ฿ | One-press manual markers (pit-in, traffic) or quicker page UX | 🔧 Small addition |
 | **Active GPS antenna** (if your module has a u.FL socket) | 100-150 ฿ | Better fix under marginal sky (garages, grandstands) | ✅ Plug and play |

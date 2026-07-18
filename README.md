@@ -450,6 +450,7 @@ riding.
 | `NUM_SECTORS` | 3 | automatic sectors per lap |
 | `SESSION_GAP_MS` | 5 min | stop longer than this = new session |
 | `TRACK_MATCH_KM` | 5 km | auto-select range for stored tracks |
+| `DISPLAY_SSD1309` | 0 | 0 = 0.96" SSD1306, 1 = 2.42" SSD1309 (same 4-wire I2C wiring) |
 | `BT_MODE` | RACECHRONO | Bluetooth mode: `RACECHRONO` (BLE), `NMEA` (Bluetooth Classic), `OFF` |
 | `BT_DEVICE_NAME` | LapTimer ESP32 | name the phone sees (Bluetooth + WiFi) |
 | `PIT_WIFI_PASS` | laptimer | pit-mode hotspot password |

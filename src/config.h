@@ -112,6 +112,14 @@ constexpr uint32_t PIT_STALE_MS   = 5000;        // pit display: data too old
 constexpr uint32_t DIM_AFTER_MS  = 60000;  // dim after 1 min without movement or button
 constexpr float    DIM_SPEED_KMH = 5.0f;   // "movement" threshold
 
+// ========================= Display =========================
+// 0 = 0.96" SSD1306 (the first screen, now the pit-box display)
+// 1 = 2.42" SSD1309 I2C (the tank screen) — flip when it arrives.
+// Same wiring either way: VCC/GND + SDA 21 / SCL 22.
+#ifndef DISPLAY_SSD1309
+#define DISPLAY_SSD1309 0
+#endif
+
 // ========================= Interface =========================
 constexpr uint32_t LAP_FLASH_MS      = 4000;  // how long the lap time stays on screen after a lap
 constexpr uint32_t LONG_PRESS_MS     = 1000;

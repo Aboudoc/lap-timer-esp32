@@ -45,7 +45,13 @@ class Display {
   void drawLinePage(const LapTimer& t, const GpsView& g, const char* trackName);
   void drawNotify();
 
+#if DISPLAY_SSD1309
+  // 2.42" SSD1309. If the image ever looks shifted/wrapped, swap NONAME2
+  // for NONAME0 (two init variants exist among the 2.42" modules).
+  U8G2_SSD1309_128X64_NONAME2_F_HW_I2C u8g2_{U8G2_R0, U8X8_PIN_NONE, PIN_I2C_SCL, PIN_I2C_SDA};
+#else
   U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2_{U8G2_R0, U8X8_PIN_NONE, PIN_I2C_SCL, PIN_I2C_SDA};
+#endif
   char     notif_[24] = {0};
   uint32_t notifUntil_ = 0;
   bool     dimmed_ = false;
