@@ -354,23 +354,37 @@ return `<svg class="ch" viewBox="0 0 ${w} ${h}">
 <text x="${pl}" y="${h-8}" fill="#8e8e93" font-size="10">lap 1</text>
 <text x="${w-pr}" y="${h-8}" fill="#8e8e93" font-size="10"
  text-anchor="end">lap ${vals.length}</text></svg>`}
-/* stylized sport bike, side view — tire rings colored by temperature */
+/* low-poly supersport, side view — neon tire rings colored by temperature */
 function bike(tf,tr){const cf=tf?tclr(tf):"#3a3a42",cr=tr?tclr(tr):"#3a3a42";
-return `<svg class="bike" viewBox="0 0 340 152">
-<path d="M105 96 L146 58 L216 46 L246 44 L258 62 L222 68 L198 96 Z"
- fill="#26262c"/>
-<path d="M96 58 L142 52 L130 72 L92 72 Z" fill="#2c2c33"/>
-<path d="M246 44 L262 30 L266 34 L254 47 Z" fill="#33333b"/>
-<rect x="150" y="40" width="34" height="12" rx="6" fill="#30303a"/>
-<path d="M78 100 L150 90 L152 97 L80 106 Z" fill="#2a2a30"/>
-<path d="M258 98 L242 46 L249 45 L266 96 Z" fill="#2f2f37"/>
-<circle cx="78" cy="100" r="27" fill="none" stroke="${cr}" stroke-width="9"/>
-<circle cx="78" cy="100" r="11" fill="#0f0f12" stroke="#3a3a42" stroke-width="3"/>
-<circle cx="264" cy="100" r="27" fill="none" stroke="${cf}" stroke-width="9"/>
-<circle cx="264" cy="100" r="11" fill="#0f0f12" stroke="#3a3a42" stroke-width="3"/>
-<text x="78" y="148" fill="${cr}" font-size="14" font-weight="700"
+const wheel=(cx,c)=>{let s="";
+for(let k=0;k<5;k++){const a=Math.PI*2*k/5+.35;
+s+=`<line x1="${cx}" y1="120" x2="${(cx+15*Math.cos(a)).toFixed(1)}"
+ y2="${(120+15*Math.sin(a)).toFixed(1)}" stroke="#34343e" stroke-width="2.6"/>`}
+return `<circle cx="${cx}" cy="120" r="30" fill="none" stroke="${c}"
+ stroke-width="13" opacity=".16"/>
+<circle cx="${cx}" cy="120" r="28" fill="#101014" stroke="${c}" stroke-width="7"/>
+<circle cx="${cx}" cy="120" r="17" fill="none" stroke="#3c3c46" stroke-width="2.5"/>
+${s}<circle cx="${cx}" cy="120" r="4" fill="#4a4a55"/>`};
+return `<svg class="bike" viewBox="0 0 340 176">
+<line x1="8" y1="70" x2="56" y2="70" stroke="#00e676" stroke-width="2" opacity=".12"/>
+<line x1="18" y1="87" x2="62" y2="87" stroke="#00e676" stroke-width="2" opacity=".24"/>
+<line x1="10" y1="104" x2="52" y2="104" stroke="#00e676" stroke-width="2" opacity=".14"/>
+<path d="M80 120 L148 108 L150 117 L82 128 Z" fill="#26262e"/>
+<path d="M266 120 L240 56 L249 53 L273 117 Z" fill="#2c2c35"/>
+<path d="M244 88 Q268 74 292 88 L285 97 Q268 85 251 97 Z" fill="#26262e"/>
+<path d="M88 66 L152 57 L164 78 L120 88 Z" fill="#34343f"/>
+<path d="M120 88 L152 57 L196 48 L242 52 L252 70 L230 102 L166 104 Z" fill="#23232c"/>
+<path d="M152 57 L196 48 L218 50 L184 63 Z" fill="#30303c"/>
+<path d="M166 104 L230 102 L221 113 L174 113 Z" fill="#16161c"/>
+<path d="M242 52 L266 33 L272 39 L255 59 Z" fill="#33333e"/>
+<path d="M120 88 L166 104 L230 102" fill="none" stroke="#00e676"
+ stroke-width="1.6" opacity=".75"/>
+<path d="M88 66 L152 57" stroke="#00e676" stroke-width="1.2" opacity=".5"/>
+<path d="M252 60 L259 52" stroke="#eaffea" stroke-width="2.5" opacity=".9"/>
+${wheel(80,cr)}${wheel(268,cf)}
+<text x="80" y="171" fill="${cr}" font-size="14" font-weight="700"
  text-anchor="middle">R ${tr?tr.toFixed(0)+"&#176;":"--"}</text>
-<text x="264" y="148" fill="${cf}" font-size="14" font-weight="700"
+<text x="268" y="171" fill="${cf}" font-size="14" font-weight="700"
  text-anchor="middle">F ${tf?tf.toFixed(0)+"&#176;":"--"}</text></svg>`}
 
 /* per-lap inspector: chip selector + bike + sectors */
