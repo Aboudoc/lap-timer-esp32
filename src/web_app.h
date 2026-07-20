@@ -354,38 +354,29 @@ return `<svg class="ch" viewBox="0 0 ${w} ${h}">
 <text x="${pl}" y="${h-8}" fill="#8e8e93" font-size="10">lap 1</text>
 <text x="${w-pr}" y="${h-8}" fill="#8e8e93" font-size="10"
  text-anchor="end">lap ${vals.length}</text></svg>`}
-/* low-poly supersport, side view — neon tire rings colored by temperature */
-function bike(tf,tr){const cf=tf?tclr(tf):"#3a3a42",cr=tr?tclr(tr):"#3a3a42";
-const wheel=(cx,c)=>{let s="";
-for(let k=0;k<5;k++){const a=Math.PI*2*k/5+.35;
-s+=`<line x1="${cx}" y1="120" x2="${(cx+15*Math.cos(a)).toFixed(1)}"
- y2="${(120+15*Math.sin(a)).toFixed(1)}" stroke="#34343e" stroke-width="2.6"/>`}
-return `<circle cx="${cx}" cy="120" r="30" fill="none" stroke="${c}"
- stroke-width="13" opacity=".16"/>
-<circle cx="${cx}" cy="120" r="28" fill="#101014" stroke="${c}" stroke-width="7"/>
-<circle cx="${cx}" cy="120" r="17" fill="none" stroke="#3c3c46" stroke-width="2.5"/>
-${s}<circle cx="${cx}" cy="120" r="4" fill="#4a4a55"/>`};
-return `<svg class="bike" viewBox="0 0 340 176">
-<line x1="8" y1="70" x2="56" y2="70" stroke="#00e676" stroke-width="2" opacity=".12"/>
-<line x1="18" y1="87" x2="62" y2="87" stroke="#00e676" stroke-width="2" opacity=".24"/>
-<line x1="10" y1="104" x2="52" y2="104" stroke="#00e676" stroke-width="2" opacity=".14"/>
-<path d="M80 120 L148 108 L150 117 L82 128 Z" fill="#26262e"/>
-<path d="M266 120 L240 56 L249 53 L273 117 Z" fill="#2c2c35"/>
-<path d="M244 88 Q268 74 292 88 L285 97 Q268 85 251 97 Z" fill="#26262e"/>
-<path d="M88 66 L152 57 L164 78 L120 88 Z" fill="#34343f"/>
-<path d="M120 88 L152 57 L196 48 L242 52 L252 70 L230 102 L166 104 Z" fill="#23232c"/>
-<path d="M152 57 L196 48 L218 50 L184 63 Z" fill="#30303c"/>
-<path d="M166 104 L230 102 L221 113 L174 113 Z" fill="#16161c"/>
-<path d="M242 52 L266 33 L272 39 L255 59 Z" fill="#33333e"/>
-<path d="M120 88 L166 104 L230 102" fill="none" stroke="#00e676"
- stroke-width="1.6" opacity=".75"/>
-<path d="M88 66 L152 57" stroke="#00e676" stroke-width="1.2" opacity=".5"/>
-<path d="M252 60 L259 52" stroke="#eaffea" stroke-width="2.5" opacity=".9"/>
-${wheel(80,cr)}${wheel(268,cf)}
-<text x="80" y="171" fill="${cr}" font-size="14" font-weight="700"
- text-anchor="middle">R ${tr?tr.toFixed(0)+"&#176;":"--"}</text>
-<text x="268" y="171" fill="${cf}" font-size="14" font-weight="700"
- text-anchor="middle">F ${tf?tf.toFixed(0)+"&#176;":"--"}</text></svg>`}
+/* the bike illustration (served by the device) + dynamic temperature rings
+   over the wheels. Ring positions are calibrated to /bike.webp. */
+function bike(tf,tr){const cf=tf?tclr(tf):"#4a4a55",cr=tr?tclr(tr):"#4a4a55";
+const ring=(x,y,d,c)=>
+`<div style="position:absolute;left:${x}%;top:${y}%;width:${d+7}%;aspect-ratio:1;
+transform:translate(-50%,-50%);border-radius:50%;
+box-shadow:0 0 26px 12px ${c}38"></div>
+<div style="position:absolute;left:${x}%;top:${y}%;width:${d+1.5}%;aspect-ratio:1;
+transform:translate(-50%,-50%);border-radius:50%;border:6px solid ${c};
+box-shadow:0 0 15px 3px ${c}99, inset 0 0 13px 3px ${c}77"></div>`;
+const lbl=(x,c,txt)=>
+`<div style="position:absolute;left:${x}%;bottom:0;transform:translateX(-50%);
+font-weight:800;font-size:17px;font-style:italic;color:${c};
+text-shadow:0 0 12px ${c}66">${txt}</div>`;
+return `<div style="margin:2px 0 4px">
+<div style="position:relative">
+<img src="/bike.webp" style="width:100%;display:block;border-radius:14px">
+${ring(16.0,73.2,20.7,cr)}${ring(84.2,77.6,19.6,cf)}
+</div>
+<div style="position:relative;height:28px;margin-top:2px">
+${lbl(16,cr,"R "+(tr?tr.toFixed(0)+"&#176;":"--"))}
+${lbl(84.2,cf,"F "+(tf?tf.toFixed(0)+"&#176;":"--"))}
+</div></div>`}
 
 /* per-lap inspector: chip selector + bike + sectors */
 function renderInsp(si,li){const s=sessions[si];const l=s.laps[li];

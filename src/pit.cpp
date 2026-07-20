@@ -4,6 +4,7 @@
 #include "laptimer.h"
 #include "web_app.h"
 #include "web_icon.h"
+#include "web_bike.h"
 
 static const char* kCss =
     "<style>body{font-family:sans-serif;margin:16px;background:#111;color:#eee;max-width:480px}"
@@ -103,6 +104,10 @@ void PitMode::begin(Storage* storage, const PitActions& actions, const char* ver
   });
   server_.on("/apple-touch-icon.png", HTTP_GET, [this]() {
     server_.send_P(200, "image/png", (const char*)WEB_ICON_PNG, WEB_ICON_PNG_LEN);
+  });
+  server_.on("/bike.webp", HTTP_GET, [this]() {
+    server_.sendHeader("Cache-Control", "max-age=86400");
+    server_.send_P(200, "image/webp", (const char*)WEB_BIKE_WEBP, WEB_BIKE_WEBP_LEN);
   });
   server_.on("/api/status", HTTP_GET, [this]() {
     char b[512] = "{}";
